@@ -36,6 +36,7 @@ DECLARE
     -- вспомогательные процедуры
     PROCEDURE trc(p_line varchar2);
     PROCEDURE trc2(p_line varchar2, p_num number);
+    PROCEDURE errlog(p_err_num number, p_err_line varchar2);
     
     -- процедура заполнения входного массива
     -- PROCEDURE add_id( p_id number );
@@ -62,6 +63,13 @@ DECLARE
     BEGIN
         trc( p_line || ':  ' || to_char(p_num));
     END trc2;
+    
+    PROCEDURE errlog(p_err_num number, p_err_line varchar2)
+    is
+    BEGIN
+        -- пока так
+        trc( 'Ошибка >>  ' || to_char(p_err_num) || '  >> ' || p_err_line);
+    END;
     
    
     PROCEDURE cursor_preparation(p_ds IN OUT dataset_type)  
@@ -111,9 +119,11 @@ DECLARE
     exception 
         when u_incorrect_field_type then    
             cursor_closing(cur);
+            errlog('Некорректный тип', 2);
             RAISE;
         when others then
             cursor_closing(cur);
+            errlog( SQLERRM, SQLCODE);
             RAISE;
     END cursor_preparation;
     
