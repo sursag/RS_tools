@@ -82,6 +82,30 @@ end load_rss;
 
 create or replace package body load_rss
 is
+    -- перекодировка типов курсов
+    function RTYPE( p_tp number ) return number
+    is
+        v_rez number;
+    begin
+    if    p_tp = 26 then v_rez := 23;
+    elsif p_tp = 10 then v_rez := 23;
+    elsif p_tp = 27 then v_rez := 1001;
+    elsif p_tp = 28 then v_rez := 1002;
+    elsif p_tp = 29 then v_rez := 1003;
+   -- дальше странно
+    elsif p_tp = 1 then v_rez := 2;
+    elsif p_tp = 2 then v_rez := 3;
+    elsif p_tp = 3 then v_rez := 4;
+    elsif p_tp = 4 then v_rez := 15;
+    elsif p_tp = 5 then v_rez := 9;
+    elsif p_tp = 6 then v_rez := 7;
+    elsif p_tp = 7 then v_rez := 16; --KD 16 - номер курса "Объем торгов"
+    -------------------------------------------------------------------------
+    else return -p_tp;
+    end if;
+end;
+
+
     -- проверяем наличие переданного объекта в коллекции. Если его нет, дописываем. Ключ комплексный, поисковый.
     procedure replobj_add(p_objtype pls_integer, p_obj_id number, p_obj_sub_id number default 0, p_comment varchar2 default '')
     is
