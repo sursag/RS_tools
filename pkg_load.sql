@@ -87,6 +87,26 @@ DROP PACKAGE BODY GEB_20210823.LOAD_RSS;
 CREATE OR REPLACE PACKAGE BODY GEB_20210823.load_rss
 is
 
+    procedure deb_empty(p_line char := null) -- пустая строка в поток
+    is
+    begin 
+        -- для производительности
+        -- лимит важности в спецификации пакета. Если переданное значение выше, сообщение не записывается.
+        if not (g_debug_output or g_debug_table) 
+            then return; 
+        end if;
+        if g_debug_output 
+        then
+            if p_line is not null 
+            then
+                dbms_output.put_line(rpad(p_line,80,p_line));
+            else
+                dbms_output.put_line(' ');
+            end if;
+        end if;        
+    end deb_empty;
+
+
     -- проверяем наличие переданного объекта в коллекции. Если его нет, дописываем. Ключ комплексный, поисковый. 
     -- если передается p_destid, процедура просто корректирует это значение в буфере, если оно есть. Это редкий вариант примерения
     procedure replobj_add(p_objtype pls_integer, p_obj_id number, p_obj_sub_id number default 0, p_comment varchar2 := null, p_destid number := -1 )
@@ -100,7 +120,7 @@ is
         -- Данные из этих массивов не стираются на новых порциях из источника, только добавляются новые. Возможно, потом это изменю.
         v_searchstr := to_char(p_objtype) || '#' || to_char(p_obj_id) || '#' || to_char(p_obj_sub_id);
         if not replobj_rec_inx_arr.exists(v_searchstr) then
-            mas_idx := nvl(replobj_rec_arr.last,-1)+1;  -- count нельзя, -1й элемент потом добавится
+            mas_idx := nvl(replobj_rec_arr.last,-1)+1;  -- count нельзя, '-1'й элемент потом добавится
             replobj_rec_arr(mas_idx).obj_type := p_objtype;
             replobj_rec_arr(mas_idx).obj_id := p_obj_id;
             replobj_rec_arr(mas_idx).obj_sub_id := p_obj_sub_id;
@@ -112,6 +132,8 @@ is
         
         if  p_destid <> -1
         then 
+            deb( 'Коррекция в буфере replobj: для элемента ' || v_searchstr || ' значение dest_id установлено из #1 в #2',
+                replobj_rec_arr(  replobj_rec_inx_arr( v_searchstr )  ).dest_id, p_destid, p_level => 4 );
             replobj_rec_arr(  replobj_rec_inx_arr( v_searchstr )  ).dest_id := p_destid;
         end if;
         
@@ -143,22 +165,23 @@ is
         v_counter pls_integer;
         v_counter_str varchar2(100);
     begin
+        deb_empty;
         deb( 'Запущена процедура  replobj_load');
         deb( 'Количество записей в буфере replobj: ' ||load_rss.replobj_rec_arr.count() );
         
         if g_debug_level_limit > 3 then
-            deb( '>  Количество записей в буфере replobj перед загрузкой: ' ||load_rss.replobj_rec_arr.count() );
+            deb( '>  Количество записей в буфере replobj ПЕРЕД загрузкой: ' ||load_rss.replobj_rec_arr.count() );
             v_counter := load_rss.replobj_rec_arr.first; 
             while (v_counter is not null)
             loop
-                deb( '> Номер - тип - object_id - destid:      ' || v_counter || chr(9) || chr(9) || load_rss.replobj_rec_arr(v_counter).obj_type || chr(9) || chr(9) || load_rss.replobj_rec_arr(v_counter).obj_id || chr(9) || chr(9) || load_rss.replobj_rec_arr(v_counter).dest_id);
+                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_id || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
                 v_counter := replobj_rec_arr.next(v_counter);
             end loop;
-            deb( '>  Количество записей в поисковом индексе replobj перед загрузкой: ' ||load_rss.replobj_rec_inx_arr.count() );
+            deb( '>  Количество записей в поисковом индексе replobj ПЕРЕД загрузкой: ' ||load_rss.replobj_rec_inx_arr.count() );
             v_counter_str := load_rss.replobj_rec_inx_arr.first; 
             while (v_counter_str is not null)
             loop
-                deb( '> Индекс - значение:      ' || v_counter_str || chr(9) || chr(9) || load_rss.replobj_rec_inx_arr(v_counter_str));
+                deb( '> Индекс - значение:      ' || v_counter_str || '\t\t' || load_rss.replobj_rec_inx_arr(v_counter_str));
                 v_counter_str := replobj_rec_inx_arr.next(v_counter_str);
             end loop;
         end if;        
@@ -179,9 +202,8 @@ is
         LOOP
             -- определяем индекс элемента в основном массиве
             v_search_str := to_char(replobj_tmp_arr(i).t_objecttype) || '#' || to_char(replobj_tmp_arr(i).t_objectid) || '#' || nvl(to_char(replobj_tmp_arr(i).t_subobjnum),'0');
-            deb( '>  v_search_idx - v_search_str: ' ||v_search_idx || '  ' ||v_search_str );
             v_search_idx := replobj_rec_inx_arr(v_search_str);  -- нашли индекс записи в основном массиве
-            deb( '>  v_search_idx - v_search_str - T_DESTID: ' ||v_search_idx || '  ' ||v_search_str || '   ' || replobj_tmp_arr(i).T_DESTID);
+            deb( '>  Индекс_в_массиве - Поисковая_строка - Значение_t_destid: \t\t' ||v_search_idx || '\t\t' ||v_search_str || '\t\t' || replobj_tmp_arr(i).T_DESTID);
             -- адресуем элемент
             replobj_rec_arr(v_search_idx).dest_id := replobj_tmp_arr(i).T_DESTID;
             replobj_rec_arr(v_search_idx).state := replobj_tmp_arr(i).t_objstate;
@@ -203,14 +225,21 @@ is
         replobj_rec_arr(-1).state       := 0;
         
         if g_debug_level_limit > 3 then
-            deb( '>  Количество записей в буфере replobj после загрузки: ' ||load_rss.replobj_rec_arr.count() );
+            deb( '>  Количество записей в буфере replobj ПОСЛЕ загрузки: ' ||load_rss.replobj_rec_arr.count() );
             v_counter := load_rss.replobj_rec_arr.first; 
             while (v_counter is not null)
             loop
-                deb( '> Номер - тип - object_id - destid:      ' || v_counter || chr(9) || chr(9) || load_rss.replobj_rec_arr(v_counter).obj_type || chr(9) || chr(9) || load_rss.replobj_rec_arr(v_counter).obj_id || chr(9) || chr(9) || load_rss.replobj_rec_arr(v_counter).dest_id);
+                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_id || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
                 v_counter := replobj_rec_arr.next(v_counter);
             end loop;
-        end if;
+            deb( '>  Количество записей в поисковом индексе replobj ПОСЛЕ загрузки: ' ||load_rss.replobj_rec_inx_arr.count() );
+            v_counter_str := load_rss.replobj_rec_inx_arr.first; 
+            while (v_counter_str is not null)
+            loop
+                deb( '> Индекс - значение:      ' || v_counter_str || '\t\t' || load_rss.replobj_rec_inx_arr(v_counter_str));
+                v_counter_str := replobj_rec_inx_arr.next(v_counter_str);
+            end loop;
+        end if; 
         
         deb('Завершена процедура  replobj_load');
     end replobj_load;
@@ -230,6 +259,7 @@ is
         then return; 
         end if;
         
+        l_text := replace(l_text, '\t', chr(9));
         if num1 is not null
         then 
             l_text := replace(l_text, '#1', num1);
@@ -414,11 +444,12 @@ is
 
         end add_dratedef_buf;
 
-
-
-
-
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
     begin
+        deb_empty('=');
 
         deb('Запущена процедура  LOAD_RATE за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
         
@@ -431,12 +462,13 @@ is
             deb('Загружены данные из DTXCOURSE_DBT, #1 строк', m_cur%rowcount);
 
             -- регистрируем все сущности для загрузки из REPLOBJ
+            deb_empty('=');
             deb('Цикл 1 - регистрация кодов в буфере REPLOBJ');
             for i in 1..rate_sou_arr.count
             loop
                 -- собираем уникальные fiid
                 replobj_add( c_OBJTYPE_MONEY, rate_sou_arr(i).t_fiid, p_comment => 'котируемый фининструмент');
-                replobj_add( rate_sou_arr(i).T_BASEFIKIND, rate_sou_arr(i).t_basefiid, rate_sou_arr(i).t_fiid, p_comment => 'базовый фининструмент');
+                replobj_add( rate_sou_arr(i).T_BASEFIKIND, rate_sou_arr(i).t_basefiid, p_comment => 'базовый фининструмент');
 
                 -- собираем уникальные MARKETID
                 replobj_add( c_OBJTYPE_MARKET, rate_sou_arr(i).T_MARKETID, p_comment => 'торговая площадка');
@@ -450,13 +482,16 @@ is
             -- заполняем кэш из REPLOBJ
             replobj_load;
 
-
+            
 
             -- перебираем заново, заполняем перекодированными полями дополнительную коллекцию. Логируем отсутствие записей.
+            deb_empty;
+            deb_empty('=');
             deb('Цикл 2 - перекодирование и проверка параметров');
             for i in 1..rate_sou_arr.count
             loop
                 main_tmp := rate_sou_arr(i);
+                rate_sou_add_arr(i) := add_tmp; -- Для процедуры pr_exclude,она пытается в поле записать код ошибки
 
                 add_tmp.isdominant := case when ( main_tmp.T_BASEFIKIND = 10 and main_tmp.t_type = 6 ) THEN chr(88) else chr(0) end;
 
@@ -474,13 +509,12 @@ is
                         end if;
 
                 add_tmp.fi  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_fiid).dest_id;
-                dbms_output.put_line('!!!!!!!   ' || add_tmp.fi || '    ' || main_tmp.t_fiid);  
-                        if  ( add_tmp.market_id = 0) and (p_action > 1 ) then 
+                        if  ( add_tmp.market_id = 0) and (p_action < 3 ) then 
                             pr_exclude(527, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующего котируемого финансового инструмента, базовый инструмент - %basefiid%, тип курса - %type%', i, p_action);
                         end if;
 
                 add_tmp.market_id   :=  replobj_get( c_OBJTYPE_MARKET, main_tmp.T_MARKETID).dest_id;
-                        if  ( add_tmp.market_id = 0) and (p_action > 1 ) then
+                        if  ( add_tmp.market_id = 0) and (p_action < 3 ) then
                             pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующей торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
                         end if;
                 add_tmp.section_id  :=  replobj_get( c_OBJTYPE_MARKET_SECTION, main_tmp.T_MARKETID, main_tmp.T_MARKETSECTORID).dest_id;
@@ -489,11 +523,15 @@ is
                             null;
                         end if;
                 add_tmp.base_fi     :=  replobj_get( main_tmp.T_BASEFIKIND, main_tmp.t_basefiid).dest_id;
-                        if  ( add_tmp.market_id = 0) and (p_action > 1 ) then
+                        if  ( add_tmp.base_fi <= 0) and (p_action > 1 ) then
                             pr_exclude(528, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующего базового финансового инструмента, котируемый инструмент - %basefiid%, тип курса - %type%', i, p_action);
                         end if;
+                
+                if  rate_sou_add_arr(i).result = 2
+                    then continue;
+                end if;
+                
                 add_tmp.isrelative := case when ( main_tmp.T_BASEFIKIND = 20 and RSI_RSB_FIInstr.FI_IsAvrKindBond( RSI_RSB_FIInstr.FI_AvrKindsGetRootByFIID( add_tmp.base_fi))) THEN chr(88) else chr(0) end;
-
                 rate_sou_add_arr(i) := add_tmp;
 
             end loop;
@@ -528,6 +566,8 @@ is
 
 
             -- еще раз проходим по датасету источника. Проверяем, есть ли курс в таргете, и реагируем
+            deb_empty;
+            deb_empty('=');
             deb('Цикл 3 - запись курсов в таблицы-приемники');
             for i in 1..rate_sou_arr.count
             loop
@@ -597,6 +637,7 @@ is
 
                                             insert into dratedef_dbt values dratedef_tmp;
                                             --TODO  add_dratedef_buf(dratedef_tmp);  -- запись в базу и в буфер
+                                            --commit;
                                             
                                             delete from DTXREPLOBJ_DBT where T_OBJECTTYPE=70 and t_objectid = main_tmp.t_courseid; 
                                             insert into DTXREPLOBJ_DBT (T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) values(70, main_tmp.t_courseid, main_tmp.t_type, dratedef_tmp.t_rateid, 1, 0 );
@@ -624,6 +665,8 @@ is
                                                 INSERT INTO dratehist_dbt(t_rateid, t_isinverse, t_rate, t_scale, t_point, t_inputdate, t_inputtime, t_oper, t_sincedate, t_ismanualinput)
                                                 SELECT t_rateid, chr(0),  t_rate , t_scale, t_point, t_inputdate, t_inputtime, t_oper, t_sincedate, chr(0)
                                                 FROM dratedef_dbt where t_rateid = add_tmp.tgt_rate_id;
+                                                deb('Цикл 3 - Перенесено #1 строк', SQL%ROWCOUNT, p_level => 5);
+                                                
                                             exception
                                                 when dup_val_on_index then null;  -- был перенесен раньше с некорректным выходом
                                             end;
