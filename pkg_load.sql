@@ -19,6 +19,8 @@ is
     c_RATE_TYPE_NKDONDATE constant number := 15;        -- тип курса "НКД на дату"
     c_RATE_TYPE_NOMINALONDATE constant number :=  100;  -- репликация номиналов ц/б на дату (реплицируются из таблицы курсов)
 
+
+
     ---------------------------------------------------------------------------------------------------------------------------------------------
     -- кэш таблицы котировок из источника
     type rate_sou_arr_type is table of DTXCOURSE_DBT%ROWTYPE;
@@ -41,6 +43,8 @@ is
     rate_sou_arr        rate_sou_arr_type;
     rate_sou_add_arr    rate_sou_add_arr_type;
     ---------------------------------------------------------------------------------------------------------------------------------------------
+
+
 
     -- основная процедура --
     procedure load_rate(p_date date, p_action number);
@@ -247,6 +251,11 @@ is
 
 
     -- вывод отладочной информации
+    -- Уровень 0 показывает только запуск основных процедур и обобщенную статистику
+    -- Уровень 1 показывает статистику по процедурам
+    -- Уровень 2 показывает содержимое буфера REPLOBJ
+    -- Уровень 3 показывает общий результат по каждой строке
+    -- Уровень 5 показывает детализацию по каждой строке
     procedure deb( p_text varchar2, num1 number default null, num2 number default null, num3 number default null, p_level pls_integer := 1)
     is
         l_id number;
@@ -313,6 +322,8 @@ is
 
         type index_collection_type is table of number index by varchar2(100);  -- тип индексной коллекции, используется для поиска связей сущностей.
 
+
+
         ---------------------------------------------------------------------------------------------------------------------------------------------
         -- кэш курсов
         type dratedef_arr_type is table of dratedef_dbt%rowtype index by pls_integer;
@@ -328,6 +339,15 @@ is
         new_dratehist_arr  add_dratehist_arr_type; --  OUT, буфер для вставки данных в историю.
         del_dratehist_arr  del_dratehist_arr_type; --  OUT, буфер для удаления данных из истории.
         new_dratedef_arr   dratedef_arr_type;      --  OUT, буфер для изменения самого курса. Данные в таблице массово только меняются. Если курс новый - вводим пустышку и сводим задачу к update. Если delete - удаляем сразу
+        ---------------------------------------------------------------------------------------------------------------------------------------------
+        -- кэш индексированных номиналов
+        type ind_nominal_type is record (T_FIID number, T_BEGDATE date, T_FACEVALUE number);
+        type ind_nominal_arr_type is table of ind_nominal_type index by pls_integer;
+        type ind_nominal_tmp_type is table of dv_fi_facevalue_hist%ROWTYPE;  
+        ---
+        ind_nominal_arr ind_nominal_arr_type;
+        ind_nominal_tmp ind_nominal_tmp_type;
+        ind_nominal_flag  boolean;
         ---------------------------------------------------------------------------------------------------------------------------------------------
 
         add_tmp  rate_sou_add_type;
@@ -345,7 +365,7 @@ is
 
 
         -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
-        procedure pr_exclude(p_code number, p_objtype number, p_id number, p_subnum number := 0, p_text varchar2, p_counter number, p_action number)
+        procedure pr_exclude(p_code number, p_objtype number, p_id number, p_subnum number := 0, p_text varchar2, p_counter number, p_action number, p_silent boolean := false)
         is
             text_corr varchar2(1000);
             v_row DTXCOURSE_DBT%ROWTYPE;
@@ -358,7 +378,10 @@ is
             text_corr := replace(text_corr, '%type%', v_row.t_type);
             text_corr := replace(text_corr, '%date%', to_char(v_row.t_ratedate,'dd.mm.yyyy'));
             -- потом заменить на add_log_deferred
-            add_log( p_code, p_objtype, p_id, p_subnum, text_corr, p_date);
+            if not p_silent
+            then
+                add_log( p_code, p_objtype, p_id, p_subnum, text_corr, p_date);
+            end if;
 
             -- исключаем элемент
             rate_sou_add_arr(p_counter).result := 2;
@@ -443,137 +466,16 @@ is
             insert into dratedef_dbt values tmp;
 
         end add_dratedef_buf;
-
---================================================================================================================
---================================================================================================================
---================================================================================================================
---================================================================================================================
-    begin
-        deb_empty('=');
-
-        deb('Запущена процедура  LOAD_RATE за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
         
-        open m_cur(p_date, p_action);
-        loop
-
-            -- загрузка порции данных
-            fetch m_cur bulk collect into rate_sou_arr limit g_limit;
-            exit when rate_sou_arr.count=0;
-            deb('Загружены данные из DTXCOURSE_DBT, #1 строк', m_cur%rowcount);
-
-            -- регистрируем все сущности для загрузки из REPLOBJ
-            deb_empty('=');
-            deb('Цикл 1 - регистрация кодов в буфере REPLOBJ');
-            for i in 1..rate_sou_arr.count
-            loop
-                -- собираем уникальные fiid
-                replobj_add( c_OBJTYPE_MONEY, rate_sou_arr(i).t_fiid, p_comment => 'котируемый фининструмент');
-                replobj_add( rate_sou_arr(i).T_BASEFIKIND, rate_sou_arr(i).t_basefiid, p_comment => 'базовый фининструмент');
-
-                -- собираем уникальные MARKETID
-                replobj_add( c_OBJTYPE_MARKET, rate_sou_arr(i).T_MARKETID, p_comment => 'торговая площадка');
-                replobj_add( c_OBJTYPE_MARKET_SECTION, rate_sou_arr(i).T_MARKETID, rate_sou_arr(i).T_MARKETSECTORID);
-
-                -- собственно, курс
-                replobj_add( c_OBJTYPE_RATE, rate_sou_arr(i).T_COURSEID, rate_sou_arr(i).T_TYPE);
-            end loop;
-            deb('Собрали данные в буфер REPLOBJ, #1 записей', replobj_rec_arr.count);
-
-            -- заполняем кэш из REPLOBJ
-            replobj_load;
-
-            
-
-            -- перебираем заново, заполняем перекодированными полями дополнительную коллекцию. Логируем отсутствие записей.
-            deb_empty;
-            deb_empty('=');
-            deb('Цикл 2 - перекодирование и проверка параметров');
-            for i in 1..rate_sou_arr.count
-            loop
-                main_tmp := rate_sou_arr(i);
-                rate_sou_add_arr(i) := add_tmp; -- Для процедуры pr_exclude,она пытается в поле записать код ошибки
-
-                add_tmp.isdominant := case when ( main_tmp.T_BASEFIKIND = 10 and main_tmp.t_type = 6 ) THEN chr(88) else chr(0) end;
-
-                add_tmp.type_id := rtype( main_tmp.t_type );       -- перекодируем тип курса
-                add_tmp.rate_date := main_tmp.t_ratedate;       -- для использования из SQL, тег #R
-
-                add_tmp.tgt_rate_id :=  replobj_get(c_OBJTYPE_RATE, main_tmp.t_courseid, main_tmp.t_type).dest_id;
-                add_tmp.tgt_state :=  replobj_get(c_OBJTYPE_RATE, main_tmp.t_courseid, main_tmp.t_type).state;
-
-                stat_tmp :=  replobj_get( c_OBJTYPE_RATE, main_tmp.t_courseid, main_tmp.t_type).state;
-                        if  ( add_tmp.tgt_rate_id = 0) and (p_action > 1 ) then
-                            pr_exclude(419, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно %act% несуществующий курс, финансовый инструмент - %basefiid%', i, p_action );
-                        elsif ( stat_tmp = 1) and (p_action > 1 ) then
-                            pr_exclude(205, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: объект находится в режиме ручного редактирования, финансовый инструмент - %basefiid%', i, p_action);
-                        end if;
-
-                add_tmp.fi  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_fiid).dest_id;
-                        if  ( add_tmp.market_id = 0) and (p_action < 3 ) then 
-                            pr_exclude(527, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующего котируемого финансового инструмента, базовый инструмент - %basefiid%, тип курса - %type%', i, p_action);
-                        end if;
-
-                add_tmp.market_id   :=  replobj_get( c_OBJTYPE_MARKET, main_tmp.T_MARKETID).dest_id;
-                        if  ( add_tmp.market_id = 0) and (p_action < 3 ) then
-                            pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующей торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
-                        end if;
-                add_tmp.section_id  :=  replobj_get( c_OBJTYPE_MARKET_SECTION, main_tmp.T_MARKETID, main_tmp.T_MARKETSECTORID).dest_id;
-                        if  ( add_tmp.section_id = 0) and (p_action > 1 ) then
-                            --pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующей секции торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
-                            null;
-                        end if;
-                add_tmp.base_fi     :=  replobj_get( main_tmp.T_BASEFIKIND, main_tmp.t_basefiid).dest_id;
-                        if  ( add_tmp.base_fi <= 0) and (p_action > 1 ) then
-                            pr_exclude(528, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующего базового финансового инструмента, котируемый инструмент - %basefiid%, тип курса - %type%', i, p_action);
-                        end if;
-                
-                if  rate_sou_add_arr(i).result = 2
-                    then continue;
-                end if;
-                
-                add_tmp.isrelative := case when ( main_tmp.T_BASEFIKIND = 20 and RSI_RSB_FIInstr.FI_IsAvrKindBond( RSI_RSB_FIInstr.FI_AvrKindsGetRootByFIID( add_tmp.base_fi))) THEN chr(88) else chr(0) end;
-                rate_sou_add_arr(i) := add_tmp;
-
-            end loop;
-
-            -- загружаем из целевой системы значение курса (из основной записи) по всем action
-            deb('Загрузка буфера dratedef_dbt');
-            select * bulk collect into dratedef_arr_tmp from dratedef_dbt where t_rateid in ( select tgt_rate_id from table(rate_sou_add_arr) );
-            for i in 1..dratedef_arr_tmp.count
-            loop
-                -- переиндексируем коллекцию по rate_id
-                dratedef_arr( dratedef_arr_tmp(i).t_rateid ) := dratedef_arr_tmp(i);
-            end loop;
-            -- временная больше не нужна
-            dratedef_arr_tmp.delete;
-
-            -- загружаем буфер из истории. #R
-            -- только значения по нужным курсам за нужные даты
-            -- здесь комплексный ключ. Можно переиндексировать в коллекцию с varchar индексом, но тут проще сделать новую.
-            -- поскольку нас чаще будет интересовать сам факт наличия элемента, а не его атрибуты.
-            deb('Загрузка буфера dratehist_dbt');
-            select * bulk collect into dratehist_arr from dratehist_dbt where (t_rateid, t_sincedate) in ( select tgt_rate_id, rate_date from table(rate_sou_add_arr) );
-            -- TODO добавить emerg_limit
-            for i in 1..dratehist_arr.count
-            loop
-                -- создаем поисковую коллекцию
-                -- ключ вида "12345#12082020", {rate_id}#{дата_начала_действия_курса}
-                dratehist_ind_arr( to_char(dratehist_arr(i).t_rateid) || '#' || to_char(dratehist_arr(i).t_sincedate, 'ddmmyyyy') ) := i;
-            end loop;
-            ---------------------------------------------------------------------------------------------------------------------------------------------
-            --- все данные загружены
-
-
-
-            -- еще раз проходим по датасету источника. Проверяем, есть ли курс в таргете, и реагируем
-            deb_empty;
-            deb_empty('=');
-            deb('Цикл 3 - запись курсов в таблицы-приемники');
-            for i in 1..rate_sou_arr.count
-            loop
-                    add_tmp := rate_sou_add_arr(i);
-                    main_tmp := rate_sou_arr(i);
+        
+        
+        --==================================================================================================
+        procedure execute_rate( i pls_integer)
+        is begin
+                    deb('! Реплицируется запись, котировка/курс. BASEFIID=#1, НОМИНАЛ=#2, ДАТА=' || to_char(add_tmp.rate_date,'DD.MM.YYYY'), add_tmp.base_fi, main_tmp.t_rate, p_level => 5);
+                               
                     -- поисковый ключ
+                    
                     is_last_date := false;
                     rateindstr_tmp := add_tmp.tgt_rate_id || '#' || to_char(add_tmp.rate_date, 'ddmmyyyy');
                     if dratehist_ind_arr.exists( rateindstr_tmp)
@@ -763,14 +665,306 @@ is
                             deb('Цикл 3 - ошибка - значение удаляемого курса не найдено в целевой системе', p_level => 5);
                             -- ошибка, значение изменяемого курса не найдено в целевой системе
                             pr_exclude(420, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно удалить несуществующий курс за дату %date% по фининструменту %fiid%, тип курса - %type%', i, p_action);
-                            continue;
-                        end if;
-                        delete from dratehist_dbt where t_rateid = add_tmp.tgt_rate_id and t_sincedate = main_tmp.t_ratedate;
+                        else    
 
-                        pr_include(i);
-                    end case;
-                    deb('Обновляем статус репликации записи на #1', rate_sou_add_arr(i).result, p_level => 4);
-                    update DTXCOURSE_DBT set t_replstate = rate_sou_add_arr(i).result  where T_COURSEID = main_tmp.t_courseid and t_action = p_action and t_replstate = 0 and t_type = main_tmp.t_type and t_instancedate = main_tmp.t_instancedate;
+                            delete from dratehist_dbt where t_rateid = add_tmp.tgt_rate_id and t_sincedate = main_tmp.t_ratedate;
+                            pr_include(i);
+                        end if;
+                    end case;        
+        
+        end execute_rate;
+
+
+
+--===========================================================================================================================
+--===========================================================================================================================
+        procedure execute_nominal( i pls_integer)
+        is 
+            l_initnom number := 0;
+            l_destid  number;
+            l_flag    number;
+            l_nom_for_date number;
+            l_id      number;
+        begin
+            deb('! Реплицируется запись, индексируемый номинал. BASEFIID=#1, НОМИНАЛ=#2, ДАТА=' || to_char(add_tmp.rate_date,'DD.MM.YYYY'), add_tmp.base_fi, main_tmp.t_rate, p_level => 5);
+            if  ind_nominal_arr.exists( add_tmp.base_fi )  and  ind_nominal_arr( add_tmp.base_fi ).T_BEGDATE = add_tmp.rate_date
+            then
+                l_initnom := ind_nominal_arr( add_tmp.base_fi ).T_FACEVALUE;
+                deb('Из буфера получено значение начального номинала за целевую дату - #1', l_initnom, p_level => 5);
+            end if;
+                
+            if p_action = 2 or p_action = 3 
+            then
+                ----------------------------------------------------------------------
+                if l_initnom > 0 
+                then 
+                    deb('Ошибка: изменение начального номинала бумаги необходимо выполнять при репликации из DTXAVOIRISS_DBT', p_level => 5);
+                    pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: изменение начального номинала бумаги необходимо выполнять при репликации из DTXAVOIRISS_DBT', i, p_action);
+                else
+                    ----------------------------------------------------------------------
+                    l_destid := replobj_get( c_OBJTYPE_RATE, main_tmp.t_courseid, main_tmp.t_type).DEST_ID;  
+                    if  l_destid = -1  -- не нашли номинал в репликации
+                    then
+                        deb('Ошибка: изменяемый/удаляемый номинал не реплицирован в целевую систему', p_level => 5);
+                        pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: изменяемый/удаляемый номинал не реплицирован в целевую систему', i, p_action);
+                    else
+                        ----------------------------------------------------------------------
+                        select count(*) into l_flag from DFIVLHIST_DBT where t_id = l_destid;
+                        if l_flag = 0   -- не нашли номинал в целевой таблице
+                        then
+                            deb('Ошибка: изменяемый/удаляемый номинал отсутствует в системе', p_level => 5);
+                            pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: изменяемый/удаляемый номинал отсутствует в системе', i, p_action);
+                        else
+                            --=======================================================================================
+                            if p_action = 2
+                            then
+                                    if  add_tmp.tgt_state = 1 
+                                    then
+                                        -- объект в режиме ручного изменения
+                                        deb('Цикл 3 - ошибка - объект в режиме ручного изменения', p_level => 5);
+                                        pr_exclude(205, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: объект находится в режиме ручного редактирования, курс за дату %date% по фининструменту %fiid%, тип курса - %type%', i, p_action);
+                                    else
+                                        update DFIVLHIST_DBT set T_FIID = add_tmp.fi, T_VALKIND = 1/*изменение номинала*/, T_ENDDATE = main_tmp.t_ratedate, T_VALUE = main_tmp.t_rate, T_INTVALUE = 0 where t_ID = l_destid;
+                                        pr_include(i);
+                                        deb('Цикл 3 - Объект успешно изменен', p_level => 5);
+                                    end if;
+                            elsif p_action = 3
+                            then
+                                    deb('Цикл 3 - удаление объекта из DFIVLHIST_DBT (#1)', l_destid, p_level => 5);
+                                    delete from DFIVLHIST_DBT where t_ID = l_destid;
+                                    pr_include(i);
+                                    deb('Цикл 3 - Объект успешно удален', p_level => 5);                                                                                                               
+                            end if;                                
+                        end if;
+                    end if;
+                
+                end if;
+            else  -- p_action == 1 
+
+                if l_initnom = 0 -- в буфере не было начального номинала за дату
+                then  
+                    begin
+                        select t_value into l_nom_for_date from DFIVLHIST_DBT where t_ValKind = 1/*изменение номинала*/ and T_FIID = add_tmp.fi and t_EndDate = main_tmp.t_ratedate;
+                        deb('Цикл 3 - номинал найден в DFIVLHIST_DBT: значение #1, fiid=#2', l_nom_for_date, add_tmp.fi, p_level => 5);
+                    exception 
+                        when no_data_found 
+                        then l_nom_for_date := 0;
+                    end;
+                end if;
+                
+                if l_initnom + l_nom_for_date > 0
+                then
+                    deb('Цикл 3 - добавляемый номинал (значение #1) уже есть в системе (значение #2)', main_tmp.t_rate, (l_initnom + l_nom_for_date), p_level => 5);
+                    if (l_initnom + l_nom_for_date) = main_tmp.t_rate
+                    then -- Если номинал тот же, что в системе, в лог не пишем
+                        pr_exclude(418, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: уже существует номинал за дату %date% по фининструменту %fiid%, тип курса - %type%', i, p_action, p_silent => true);
+                    else    
+                        pr_exclude(418, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: уже существует номинал за дату %date% по фининструменту %fiid%, тип курса - %type%', i, p_action, p_silent => false);
+                    end if;
+                else
+                    
+                    select DFIVLHIST_DBT_seq.nextval into l_id FROM dual;
+                    deb('Цикл 3 - получили ID новой записи в DFIVLHIST_DBT (#1)', l_id, p_level => 5);
+                    
+                    insert into DFIVLHIST_DBT (T_ID, T_FIID, T_VALKIND, T_ENDDATE, T_VALUE, T_INTVALUE) 
+                    values( l_id, add_tmp.base_fi, 1, main_tmp.t_ratedate, main_tmp.t_rate, 0);
+                    
+                    
+                    delete from DTXREPLOBJ_DBT where T_OBJECTTYPE=70 and t_objectid = main_tmp.t_courseid; 
+                    insert into DTXREPLOBJ_DBT (T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) values(70, main_tmp.t_courseid, main_tmp.t_type, l_id, 1, 0 );
+                    pr_include(i);
+                                            
+                    -- теперь поправим 2 буфера - replobj, rate_sou_add_arr
+                    -- вносим текущую запись
+                    deb('Цикл 3 - добавляем запись о новом номинале в буферы', p_level => 5);
+                    dratedef_arr( dratedef_tmp.t_rateid ) := dratedef_tmp;
+                    -- Среди следующих записей могут быть те, что относятся к этому же курсу
+                    for j in i..rate_sou_arr.count  -- от текущей записи до конца
+                    loop
+                        if rate_sou_arr(j).t_courseid=main_tmp.t_courseid and rate_sou_arr(j).t_type=main_tmp.t_type
+                        then
+                            rate_sou_add_arr(j).tgt_rate_id := l_id;               
+                        end if;
+                    end loop;
+                    replobj_add( c_OBJTYPE_RATE, rate_sou_arr(i).T_COURSEID, rate_sou_arr(i).T_TYPE, p_destid => l_id);       
+                    add_tmp.tgt_rate_id := l_id; 
+                    
+                
+                end if;
+            end if;
+
+        end execute_nominal;
+
+
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
+    begin
+        deb_empty('=');
+
+        deb('Запущена процедура  LOAD_RATE за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
+        
+        open m_cur(p_date, p_action);
+        loop
+
+            -- загрузка порции данных
+            fetch m_cur bulk collect into rate_sou_arr limit g_limit;
+            exit when rate_sou_arr.count=0;
+            deb('Загружены данные из DTXCOURSE_DBT, #1 строк', m_cur%rowcount);
+
+            -- регистрируем все сущности для загрузки из REPLOBJ
+            deb_empty('=');
+            deb('Цикл 1 - регистрация кодов в буфере REPLOBJ');
+            for i in 1..rate_sou_arr.count
+            loop
+                -- собираем уникальные fiid
+                replobj_add( c_OBJTYPE_MONEY, rate_sou_arr(i).t_fiid, p_comment => 'котируемый фининструмент');
+                replobj_add( rate_sou_arr(i).T_BASEFIKIND, rate_sou_arr(i).t_basefiid, p_comment => 'базовый фининструмент');
+
+                -- собираем уникальные MARKETID
+                replobj_add( c_OBJTYPE_MARKET, rate_sou_arr(i).T_MARKETID, p_comment => 'торговая площадка');
+                replobj_add( c_OBJTYPE_MARKET_SECTION, rate_sou_arr(i).T_MARKETID, rate_sou_arr(i).T_MARKETSECTORID);
+
+                -- собственно, курс
+                replobj_add( c_OBJTYPE_RATE, rate_sou_arr(i).T_COURSEID, rate_sou_arr(i).T_TYPE);
+            end loop;
+            deb('Собрали данные в буфер REPLOBJ, #1 записей', replobj_rec_arr.count);
+
+            -- заполняем кэш из REPLOBJ
+            replobj_load;
+
+            
+
+            -- перебираем заново, заполняем перекодированными полями дополнительную коллекцию. Логируем отсутствие записей.
+            deb_empty;
+            deb_empty('=');
+            ind_nominal_flag := false;
+            deb('Цикл 2 - перекодирование и проверка параметров');
+            for i in 1..rate_sou_arr.count
+            loop
+                main_tmp := rate_sou_arr(i);
+                rate_sou_add_arr(i) := add_tmp; -- Для процедуры pr_exclude,она пытается в поле записать код ошибки
+
+                add_tmp.isdominant := case when ( main_tmp.T_BASEFIKIND = 10 and main_tmp.t_type = 6 ) THEN chr(88) else chr(0) end;
+
+                add_tmp.type_id := rtype( main_tmp.t_type );       -- перекодируем тип курса
+                
+                if add_tmp.type_id = c_RATE_TYPE_NOMINALONDATE
+                then 
+                    -- Среди курсов встречаются записи об изменениии индексированного номинала, которые надо обрабатывать отдельно
+                    ind_nominal_flag := true;
+                end if;
+                
+                add_tmp.rate_date := main_tmp.t_ratedate;       -- для использования из SQL, тег #R
+
+                add_tmp.tgt_rate_id :=  replobj_get(c_OBJTYPE_RATE, main_tmp.t_courseid, main_tmp.t_type).dest_id;
+                add_tmp.tgt_state :=  replobj_get(c_OBJTYPE_RATE, main_tmp.t_courseid, main_tmp.t_type).state;
+
+                stat_tmp :=  replobj_get( c_OBJTYPE_RATE, main_tmp.t_courseid, main_tmp.t_type).state;
+                        if  ( add_tmp.tgt_rate_id = 0) and (p_action > 1 ) then
+                            pr_exclude(419, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно %act% несуществующий курс, финансовый инструмент - %basefiid%', i, p_action );
+                        elsif ( stat_tmp = 1) and (p_action > 1 ) then
+                            pr_exclude(205, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: объект находится в режиме ручного редактирования, финансовый инструмент - %basefiid%', i, p_action);
+                        end if;
+
+                add_tmp.fi  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_fiid).dest_id;
+                        if  ( add_tmp.market_id = 0) and (p_action < 3 ) then 
+                            pr_exclude(527, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующего котируемого финансового инструмента, базовый инструмент - %basefiid%, тип курса - %type%', i, p_action);
+                        end if;
+
+                add_tmp.market_id   :=  replobj_get( c_OBJTYPE_MARKET, main_tmp.T_MARKETID).dest_id;
+                        if  ( add_tmp.market_id = 0) and (p_action < 3 ) then
+                            pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующей торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
+                        end if;
+                add_tmp.section_id  :=  replobj_get( c_OBJTYPE_MARKET_SECTION, main_tmp.T_MARKETID, main_tmp.T_MARKETSECTORID).dest_id;
+                        if  ( add_tmp.section_id = 0) and (p_action > 1 ) then
+                            --pr_exclude(525, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующей секции торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
+                            null;
+                        end if;
+                add_tmp.base_fi     :=  replobj_get( main_tmp.T_BASEFIKIND, main_tmp.t_basefiid).dest_id;
+                        if  ( add_tmp.base_fi <= 0) and (p_action > 1 ) then
+                            pr_exclude(528, 70, main_tmp.t_courseid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующего базового финансового инструмента, котируемый инструмент - %basefiid%, тип курса - %type%', i, p_action);
+                        end if;
+                -- если нашли ошибку, ни к чему сохранять
+                if  rate_sou_add_arr(i).result = 2
+                    then continue;
+                end if;
+                
+                add_tmp.isrelative := case when ( main_tmp.T_BASEFIKIND = 20 and add_tmp.type_id <> c_RATE_TYPE_NKDONDATE and RSI_RSB_FIInstr.FI_IsAvrKindBond( RSI_RSB_FIInstr.FI_AvrKindsGetRootByFIID( add_tmp.base_fi))) THEN chr(88) else chr(0) end;
+                rate_sou_add_arr(i) := add_tmp;
+
+            end loop;
+
+            -- создаем второй буфер - dratedef|dratehist. Скорость доступа к dratedef обеспечивается индексацией по rate_id, к dratehist - поисковой коллекцией.
+            -- Пересоздавать коллекцию с varchar ключом будет дольше.
+            -- загружаем из целевой системы значение курса (из основной записи) по всем action
+            deb('Загрузка буфера dratedef_dbt');
+            select * bulk collect into dratedef_arr_tmp from dratedef_dbt where t_rateid in ( select tgt_rate_id from table(rate_sou_add_arr) );
+            for i in 1..dratedef_arr_tmp.count
+            loop
+                -- переиндексируем коллекцию по rate_id
+                dratedef_arr( dratedef_arr_tmp(i).t_rateid ) := dratedef_arr_tmp(i);
+            end loop;
+            -- временная больше не нужна
+            dratedef_arr_tmp.delete;
+
+            -- загружаем буфер из истории. #R
+            -- только значения по нужным курсам за нужные даты
+            -- здесь комплексный ключ. Можно переиндексировать в коллекцию с varchar индексом, но тут проще сделать новую.
+            -- поскольку нас чаще будет интересовать сам факт наличия элемента, а не его атрибуты.
+            deb('Загрузка буфера dratehist_dbt');
+            select * bulk collect into dratehist_arr from dratehist_dbt where (t_rateid, t_sincedate) in ( select tgt_rate_id, rate_date from table(rate_sou_add_arr) );
+            -- TODO добавить emerg_limit
+            for i in 1..dratehist_arr.count
+            loop
+                -- создаем поисковую коллекцию
+                -- ключ вида "12345#12082020", {rate_id}#{дата_начала_действия_курса}
+                dratehist_ind_arr( to_char(dratehist_arr(i).t_rateid) || '#' || to_char(dratehist_arr(i).t_sincedate, 'ddmmyyyy') ) := i;
+            end loop;
+            
+            ---------
+            -- если были индексируемые номиналы, загрузим буфер начальных номиналов по всем интересующим бумагам
+            deb('Загрузка буфера индексированных номиналов');
+            if ind_nominal_flag
+            then
+                select * bulk collect into ind_nominal_tmp from dv_fi_facevalue_hist  where t_id=0  
+                and t_fiid in (select base_fi from table( rate_sou_add_arr ) where type_id = c_RATE_TYPE_NOMINALONDATE );
+
+                for j in 1..ind_nominal_tmp.count
+                loop
+                    ind_nominal_arr( ind_nominal_tmp(j).t_fiid ).t_fiid := ind_nominal_tmp(j).t_fiid;
+                    ind_nominal_arr( ind_nominal_tmp(j).t_fiid ).t_begdate := ind_nominal_tmp(j).t_begdate;
+                    ind_nominal_arr( ind_nominal_tmp(j).t_fiid ).t_facevalue := ind_nominal_tmp(j).t_facevalue;
+                end loop;
+                ind_nominal_tmp.delete;
+            end if;
+            ---------------------------------------------------------------------------------------------------------------------------------------------
+            --- все данные загружены
+
+
+
+            -- еще раз проходим по датасету источника. Проверяем, есть ли курс в таргете, и реагируем
+            deb_empty;
+            deb_empty('=');
+            deb('Цикл 3 - запись курсов/номиналов в таблицы-приемники');
+            for i in 1..rate_sou_arr.count
+            loop
+                add_tmp := rate_sou_add_arr(i);
+                main_tmp := rate_sou_arr(i);
+
+                -- здесь отдельный алгоритм для изменяемых номиналов, работает с другими таблицами
+                if add_tmp.type_id <> c_RATE_TYPE_NKDONDATE
+                then
+                    -- полная обработка курса
+                    execute_rate(i);
+                else
+                    -- полная обработка изменяего номинала
+                    execute_nominal(i);
+                end if;   
+                 
+                deb('Обновляем статус репликации записи на #1', rate_sou_add_arr(i).result, p_level => 4);
+                update DTXCOURSE_DBT set t_replstate = rate_sou_add_arr(i).result  where T_COURSEID = main_tmp.t_courseid and t_action = p_action and t_replstate = 0 and t_type = main_tmp.t_type and t_instancedate = main_tmp.t_instancedate;
 
             end loop;
 
