@@ -10,18 +10,25 @@ is
     g_oper number := 1;  -- операционист, который будет прописываться во все таблицы
         
     -- константы типов
-    c_OBJTYPE_RATE constant number := 70;
-    c_OBJTYPE_MONEY constant number  := 10;
-    c_OBJTYPE_SEC  constant number  := 20;
-    c_OBJTYPE_MARKET  constant number  := 30;
+    c_OBJTYPE_RATE      constant number := 70;
+    c_OBJTYPE_MONEY     constant number  := 10;
+    c_OBJTYPE_AVOIRISS  constant number  := 20;
+    c_OBJTYPE_PARTY     constant number  := 30;
+    c_OBJTYPE_MARKET    constant number  := 30;
     c_OBJTYPE_MARKET_SECTION  constant number  := 40;
+    c_OBJTYPE_DEAL      constant number  := 80;
 
-    c_RATE_TYPE_NKDONDATE constant number := 15;        -- тип курса "НКД на дату"
-    c_RATE_TYPE_NOMINALONDATE constant number :=  100;  -- репликация номиналов ц/б на дату (реплицируются из таблицы курсов)
+    c_RATE_TYPE_NKDONDATE       constant number := 15;        -- тип курса "НКД на дату"
+    c_RATE_TYPE_NOMINALONDATE   constant number :=  100;  -- репликация номиналов ц/б на дату (реплицируются из таблицы курсов)
 
+
+    c_KINDPORT_TRADE    constant number := 1;
+    c_KINDPORT_LOAN     constant number := 0; -- надо задать
+    c_KINDPORT_INVEST   constant number := 5;
 
 
     ---------------------------------------------------------------------------------------------------------------------------------------------
+    -- оставляем в спецификации только те типы, которые используются в конструкции TABLE()
     -- кэш таблицы котировок из источника
     type rate_sou_arr_type is table of DTXCOURSE_DBT%ROWTYPE;
     type rate_sou_add_type is record(   -- дополнительные поля, привязываются к строкам коллекци rate_sou_arr_type по индексам
@@ -42,12 +49,45 @@ is
 
     rate_sou_arr        rate_sou_arr_type;
     rate_sou_add_arr    rate_sou_add_arr_type;
+    
     ---------------------------------------------------------------------------------------------------------------------------------------------
+    -- кэш таблицы сделок 
+    type deal_sou_arr_type is table of DTXDEAL_DBT%ROWTYPE;
+    type deal_sou_add_type is record (
+                                    tgt_dealid  number,
+                                    tgt_avoirissid  number,
+                                    tgt_currencyid  number,
+                                    tgt_ogroup  number,
+                                    tgt_paymcur number,
+                                    tgt_nkdfiid number,
+                                    tgt_type    number,
+                                    tgt_market  number,
+                                    tgt_sector  number,
+                                    tgt_broker  number,
+                                    tgt_parentid number,
+                                    tgt_portfolioid number,
+                                    tgt_state   number,
+                                    is_maindeal char(1) := chr(0),  -- главная сделка в операции РЕПО с корзиной. TODO оценить. нужно ли
+                                    begindate   date,
+                                    enddate     date,
+                                    result      number(1)  -- 2 - ошибка
+                                    );
+    type deal_sou_add_arr_type  is table of deal_sou_add_type index by pls_integer;
+    
+    deal_sou_arr        deal_sou_arr_type;
+    deal_sou_add_arr    deal_sou_add_arr_type;
+    
+    ---------------------------------------------------------------------------------------------------------------------------------------------
+    
 
+    
+                                                          
+                                   
 
 
     -- основная процедура --
-    procedure load_rate(p_date date, p_action number);
+    procedure load_rates(p_date date, p_action number);
+    procedure load_deals(p_date date, p_action number);
 
     ---------------------------------------------------------------------------------------------------------------------------------------------
     -- работа с кэшем replobj
@@ -58,7 +98,7 @@ is
     type replobj_rec_inx_arr_type    is table of pls_integer index by varchar2(200);     -- индексная коллекция, указывает на индекс основной, индексируется конкатенацией составного ключа (objtype,obj_id,obj_sub_id)
     type replobj_tmp_arr_type        is table of dtxreplobj_dbt%rowtype;                 -- временный буфер для BULK COLLECT, пока не разбросаем по коллекциям выше
 
-    replobj_rec_arr             load_rss.replobj_rec_arr_type;
+    replobj_rec_arr             replobj_rec_arr_type;
     replobj_rec_inx_arr         replobj_rec_inx_arr_type; -- индексная коллекция
     replobj_tmp_arr             replobj_tmp_arr_type;
 
@@ -83,6 +123,12 @@ is
     procedure deb(p_text varchar2, num1 number default null, num2 number default null, num3 number default null, p_level pls_integer := 1);
     
     procedure deb_initialize(p_output boolean, p_table boolean);
+    
+    type tmp_arr_type is table of number index by pls_integer;
+    type tmp_reverse_arr_type is table of number index by varchar2(100);
+    
+    tmp_arr tmp_arr_type;
+    tmp_reverse_arr tmp_reverse_arr_type;
     
 end load_rss;
 /
@@ -310,7 +356,7 @@ is
 
 
     -------------------------------------------------
-    procedure load_rate(p_date date, p_action number)
+    procedure load_rates(p_date date, p_action number)
     is
         -- Алгоритм следующий - считываем данные по n записей, собираем id всех связанных сущностей и загружаем их массово.
         -- затем из целевой системы загружаем описания и историю курсов, соответствующие обрабатываемым записям.
@@ -973,7 +1019,228 @@ is
         end loop;
 
         deb('Завершена процедура load_rate');
-    end load_rate;
+    end load_rates;
+
+
+
+
+
+
+    procedure load_deals( p_date date, p_action number)
+    is
+            
+       
+            cursor m_cur(pp_date date, pp_action number) is select * from DTXDEAL_DBT where t_instancedate between pp_date and pp_date+1 and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action;
+
+            type index_collection_type is table of number index by varchar2(100);  -- тип индексной коллекции, используется для поиска связей сущностей.
+        
+            -- запись для бумаг, кэшируем из таргета-------------
+            type avr_add_record is record(
+                                    r_fiid number,
+                                    r_name varchar2(200),
+                                    r_isin varchar2(50),
+                                    r_facevaluefi number,
+                                    r_current_nom number,
+                                    r_type number,
+                                    r_is_quotability char(1),
+                                    r_coupon_number number,
+                                    r_party_number  number,
+                                    r_coupon_num_tgt number,
+                                    r_party_num_tgt number
+                                  );
+            type avr_add_arr_type is table of avr_add_record;   
+            
+            avr_add_arr         avr_add_arr_type; -- коллекция. индексированная FIID
+            avr_add_arr_tmp     avr_add_arr_type; -- временная коллекция для загрузки 
+            
+            type ddl_tick_dbt_arr_type is table of ddl_tick_dbt%rowtype index by pls_integer;
+            type ddl_leg_dbt_arr_type is table of ddl_leg_dbt%rowtype index by pls_integer;
+            
+            ddl_tick_dbt_arr_in     ddl_tick_dbt_arr_type;
+            ddl_tick_dbt_arr_out    ddl_tick_dbt_arr_type;
+                        
+            ddl_leg_dbt_arr_in     ddl_leg_dbt_arr_type;
+            ddl_leg_dbt_arr_out    ddl_leg_dbt_arr_type;    
+            
+            -- чтобы не таскать массив в циклах
+            main_tmp    DTXDEAL_dBT%ROWTYPE;
+            add_tmp     deal_sou_add_type;
+            
+            -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
+            procedure pr_exclude(p_code number, p_objtype number, p_id number, p_subnum number := 0, p_text varchar2, p_counter number, p_action number, p_silent boolean := false)
+            is
+                text_corr varchar2(1000);
+                v_row DTXCOURSE_DBT%ROWTYPE;
+            begin
+                deb('Запущена процедура  pr_exclude');
+                v_row := rate_sou_arr(p_counter);
+                text_corr := replace(p_text, '%act%',  (case p_action when 1 then 'Вставка' when 2 then 'изменение' when 3 then 'удаление' end) );
+                text_corr := replace(text_corr, '%fiid%', v_row.t_fiid);
+                text_corr := replace(text_corr, '%basefiid%', v_row.t_basefiid);
+                text_corr := replace(text_corr, '%type%', v_row.t_type);
+                text_corr := replace(text_corr, '%date%', to_char(v_row.t_ratedate,'dd.mm.yyyy'));
+                -- потом заменить на add_log_deferred
+                if not p_silent
+                then
+                    add_log( p_code, p_objtype, p_id, p_subnum, text_corr, p_date);
+                end if;
+    
+                -- исключаем элемент
+                deal_sou_add_arr(p_counter).result := 2;
+    
+            end pr_exclude;
+            
+            -- запись обработана успешно.
+            procedure pr_include( p_counter number)
+            is
+            begin
+                deb('Запись обработана успешно! Процедура pr_include для записи номер #1', p_counter, p_level => 3);
+                
+                rate_sou_add_arr(p_counter).result := 1;
+    
+            end pr_include;
+        
+
+
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
+    begin
+        deb_empty('=');
+
+        deb('Запущена процедура  LOAD_DEALS за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
+        
+        open m_cur(p_date, p_action);
+        loop
+
+            -- загрузка порции данных
+            fetch m_cur bulk collect into deal_sou_arr limit g_limit;
+            exit when deal_sou_arr.count=0;
+            deb('Загружены данные из DTXDEAL_DBT, #1 строк', m_cur%rowcount);
+
+            -- регистрируем все сущности для загрузки из REPLOBJ
+            deb_empty('=');
+            tmp_arr.delete;
+            deb('Цикл 1 - регистрация кодов в буфере REPLOBJ');
+            for i in 1..deal_sou_arr.count
+            loop
+                main_tmp    := deal_sou_arr(i);
+    
+                -- собираем уникальные fiid
+                replobj_add( c_OBJTYPE_MONEY, main_tmp.t_paymcur );
+                replobj_add( c_OBJTYPE_MONEY, main_tmp.t_currencyid );
+                replobj_add( c_OBJTYPE_AVOIRISS, main_tmp.t_avoirissid );
+
+                -- собираем уникальные MARKETID
+                replobj_add( c_OBJTYPE_MARKET, main_tmp.T_MARKETID, p_comment => 'торговая площадка');
+                replobj_add( c_OBJTYPE_MARKET_SECTION, main_tmp.T_MARKETID, main_tmp.T_SECTOR);
+
+                -- собираем уникальные BROKERID
+                replobj_add( c_OBJTYPE_PARTY, main_tmp.T_BROKERID, p_comment => 'торговая площадка');
+
+                -- собираем уникальные PARTYID
+                replobj_add( c_OBJTYPE_PARTY, main_tmp.T_PARTYID, p_comment => 'торговая площадка');
+
+                -- собственно, сделка
+                replobj_add( c_OBJTYPE_DEAL, main_tmp.T_DEALID);
+                
+                if main_tmp.t_parentid is not null
+                then
+                    -- собственно, сделка
+                    replobj_add( c_OBJTYPE_DEAL, main_tmp.T_PARENTID);
+                end if;
+                
+                
+            end loop;
+            deb('Собрали данные в буфер REPLOBJ, #1 записей', replobj_rec_arr.count);
+            
+            -- заполняем кэш из REPLOBJ
+            replobj_load;
+            
+            
+            deb_empty;
+            deb_empty('=');
+            deb('Цикл 2 - перекодирование и проверка параметров');
+            for i in 1..deal_sou_arr.count
+            loop
+                main_tmp := deal_sou_arr(i); 
+
+                add_tmp.tgt_dealid :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;
+                add_tmp.tgt_state  :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).state;
+
+                add_tmp.tgt_avoirissid  :=  replobj_get( c_OBJTYPE_AVOIRISS, main_tmp.t_avoirissid).dest_id;
+                        if  ( add_tmp.tgt_avoirissid = 0) and (p_action < 3 ) then 
+                            pr_exclude(527, 70, main_tmp.t_dealid, 0, 'Ошибка: невозможно ничего сделать с курсом для несуществующего котируемого финансового инструмента, базовый инструмент - %basefiid%, тип курса - %type%', i, p_action);
+                        end if;
+
+                add_tmp.tgt_currencyid  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_currencyid).dest_id;
+                        if  ( add_tmp.tgt_currencyid = 0) and (p_action < 3 ) then 
+                            pr_exclude(527, 70, main_tmp.t_dealid, 0, 'Ошибка: невозможно ничего сделать с курсом для несуществующего котируемого финансового инструмента, базовый инструмент - %basefiid%, тип курса - %type%', i, p_action);
+                        end if;
+
+                add_tmp.tgt_paymcur  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_paymcur).dest_id;
+                        if  ( add_tmp.tgt_paymcur = 0) and (p_action < 3 ) then 
+                            pr_exclude(527, 70, main_tmp.t_dealid,  0, 'Ошибка: невозможно ничего сделать с курсом для несуществующего котируемого финансового инструмента, базовый инструмент - %basefiid%, тип курса - %type%', i, p_action);
+                        end if;                        
+
+                add_tmp.tgt_nkdfiid  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_nkdfiid).dest_id;
+                        if  ( add_tmp.tgt_nkdfiid = 0) and (p_action < 3 ) then 
+                            pr_exclude(527, 70, main_tmp.t_dealid,  0, 'Ошибка: невозможно ничего сделать с курсом для несуществующего котируемого финансового инструмента, базовый инструмент - %basefiid%, тип курса - %type%', i, p_action);
+                        end if; 
+
+                add_tmp.tgt_market   :=  replobj_get( c_OBJTYPE_MARKET, main_tmp.T_MARKETID).dest_id;
+                        if  ( add_tmp.tgt_market = 0) and (p_action < 3 ) then
+                            pr_exclude(525, 70, main_tmp.t_dealid,  0, 'Ошибка: невозможно ничего сделать с курсом для несуществующей торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
+                        end if;
+                        
+                add_tmp.tgt_sector  :=  replobj_get( c_OBJTYPE_MARKET_SECTION, main_tmp.T_MARKETID, main_tmp.T_SECTOR).dest_id;
+                        if  ( add_tmp.tgt_sector = 0) and (p_action > 1 ) then
+                            --pr_exclude(525, 70, main_tmp.t_dealid, main_tmp.t_type, 'Ошибка: невозможно ничего сделать с курсом для несуществующей секции торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
+                            null;
+                        end if;                                        
+                
+                
+                
+                
+            end loop;
+            
+
+            -- заполняем буфер бумаг
+            deb('Собираем данные по бумагам в буфер');
+            for j in replobj_rec_arr.first..replobj_rec_arr.last
+            loop
+                if replobj_rec_arr(j).obj_type = c_OBJTYPE_AVOIRISS and replobj_rec_arr(j).DEST_ID > 0 
+                then
+                    tmp_arr( tmp_arr.count ) := replobj_rec_arr(j).DEST_ID;
+                end if;
+            end loop;
+            deb('Собрали данные по бумагам в буфер, #1 записей', tmp_arr.count);
+            deb('Загружаем данные по бумагам из целевой системы');
+            
+            select fi.t_fiid, fi.t_name, av.t_isin, fi.t_facevaluefi, -1, fi.t_avoirkind, 'U', -1, -1, -1, -1
+            bulk collect into avr_add_arr_tmp from dfininstr_dbt fi, davoiriss_dbt av where fi.t_fiid=av.t_fiid and fi.t_fiid in (select column_value from TABLE(tmp_arr));
+            
+            for j in 1..avr_add_arr_tmp.count
+            loop
+                avr_add_arr( avr_add_arr_tmp(j).r_fiid ) := avr_add_arr_tmp(j);
+            end loop;
+            
+            avr_add_arr_tmp.delete;
+            tmp_arr.delete;
+            
+            deb('Бумаги загружены, буфер подготовлен, #1 записей', avr_add_arr.count);         
+            
+            -- заполняем буфер субъектов
+            
+
+        end loop;
+        
+    
+
+    end load_deals; 
+
+
 
 
 
