@@ -1,13 +1,15 @@
 CREATE OR REPLACE PACKAGE GEB_20210823.load_rss
 is
     -- параметры
-    g_limit number := 1000;             -- количество одновременно загружаемых записей источника
+    g_limit constant number := 1000;             -- количество одновременно загружаемых записей источника
     g_debug_output boolean := true;     -- записывать отладочную информацию в буфер DBMS_OUTPUT
     g_debug_table  boolean := false;    -- записывать отладочную информацию в таблицу
-    g_debug_level_limit pls_integer := 5;    -- максимальный уровень важности сообщений, который будет зафиксирован. важность уменьшается от 0 до 10.
+    g_debug_level_limit constant pls_integer := 5;    -- максимальный уровень важности сообщений, который будет зафиксирован. важность уменьшается от 0 до 10.
     g_oper constant number := 1;  -- операционист, который будет прописываться во все таблицы
     g_ourbank constant number := 12;     -- Код нашего банка. Проверить
     g_department  constant number := 1;  -- Департамент по умолчанию. См. ddp_dep_dbt
+    
+    c_DEFAULT_FICTFI  constant number := 2192;  -- Фиктивный FIID для сделки с корзиной, по умолчанию.
         
     -- константы типов
     c_OBJTYPE_MONEY     constant number  := 10;
@@ -66,6 +68,7 @@ is
     
     ---------------------------------------------------------------------------------------------------------------------------------------------
     -- кэш таблицы сделок 
+    
     type deal_sou_arr_type is table of DTXDEAL_DBT%ROWTYPE;
     type deal_sou_add_type is record (
                                     tgt_dealid  number,
@@ -90,10 +93,18 @@ is
                                     tgt_ismarketoper boolean,
                                     tgt_existback boolean,
                                     tgt_objtype number,
+                                    tgt_portfolio number,
+                                    tgt_kind    number,
+                                    tgt_country varchar2(3),
                                     is_judicialoper boolean := false, -- сделка по решениею суда, параметры могут быть нулевые
-                                    is_basket   char(1) := chr(0),
+                                    is_basket   boolean := false,
                                     is_maindeal char(1) := chr(0),  -- главная сделка в операции РЕПО с корзиной. TODO оценить. нужно ли
                                     is_matched_by_code boolean,
+                                    is_buy  boolean,
+                                    is_sale boolean,
+                                    is_loan boolean,
+                                    is_repo boolean,
+                                    is_loan_to_repo boolean,
                                     begindate   date,
                                     enddate     date,
                                     DDL_TICK_BUF    ddl_tick_dbt%rowtype,  -- найденная в целевой системе сделка и ее ценовые параметры
@@ -104,11 +115,13 @@ is
     type deal_sou_add_arr_type  is table of deal_sou_add_type index by pls_integer;
     type deal_sou_back_arr_type is table of number index by pls_integer; -- поисковая коллекция. Индексируется DDL_TICK_DBT.DEALID, содержит индекс буфера сделок
     
-    type tmp_dealid_type    is record (T_DEALID number, T_BOFFICEKIND number );
-    type tmp_dealid_arr_type is table of tmp_dealid_type  index by pls_integer;    
+    type tmp_dealid_type        is record (T_DEALID number, T_BOFFICEKIND number );
+    type tmp_dealid_arr_type    is table of tmp_dealid_type  index by pls_integer;
+    type tmp_dealcode_type      is record (T_DEALCODE varchar2(30), INDEX_NUM number ); 
+    type tmp_dealcode_arr_type  is table of tmp_dealcode_type  index by pls_integer;    
     
-    deal_sou_arr        deal_sou_arr_type;
-    deal_sou_add_arr    deal_sou_add_arr_type;
+    deal_sou_arr        deal_sou_arr_type;      -- основная коллекция сделок
+    deal_sou_add_arr    deal_sou_add_arr_type;  -- дополнительная коллекция сделок
     deal_sou_back       deal_sou_back_arr_type; -- поисковая коллекция.
     ---------------------------------------------------------------------------------------------------------------------------------------------
     

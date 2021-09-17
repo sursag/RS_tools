@@ -3,6 +3,7 @@ is
 
    
     tmp_arr             tmp_arr_type;
+    tmp_arr1             tmp_arr_type;
     ddp_dep_dbt_cache   tmp_arr_type;
     --tmp_reverse_arr tmp_reverse_arr_type;
     list_of_stocks_arr   tmp_arr_type;
@@ -10,7 +11,11 @@ is
     list_of_contrs_arr   tmp_arr_type;
     dpartyown_arr        dpartyown_arr_type;
     p_emergency_limit    number := 40000; -- ограничение по количеству записей, отбираемых BULK COLLECT
+    g_fictfi             number; -- код fiid, соответствующий в целевой системе корзине бумаг
     
+    -- коды стран из таблицы dcountry_dbt. Индекс - t_codenum3, значение - t_codelat3
+    type country_arr_type is table of varchar2(3) index by varchar2(3);
+    country_arr  country_arr_type;
     
     -- получение кода подразделения по ID. Список загружается при инициализации пакета. В рамках задачи список статичен.
     function get_dep_code( p_partyid number) return number
@@ -990,6 +995,7 @@ is
                                     r_current_nom number,
                                     r_type number,
                                     r_is_quotability char(1),
+                                    r_is_ksu number(1),
                                     r_coupon_number number,
                                     r_party_number  number,
                                     r_coupon_num_tgt number,
@@ -998,7 +1004,20 @@ is
             type avr_add_arr_type is table of avr_add_record;   
             
             avr_add_arr         avr_add_arr_type; -- коллекция бумаг, индексированная FIID
-            avr_add_arr_tmp     avr_add_arr_type; -- временная коллекция бумаг для загрузки 
+            
+            
+            -- коллекция для получения группы и признаков сделки
+            type tmp_dealogroup_type  is record (
+                                    r_dealid  number,
+                                    r_group   number,
+                                    r_isbuy   number(1),
+                                    r_issale  number(1),
+                                    r_isloan  number(1),
+                                    r_isrepo  number(1)
+                                    );
+            type tmp_dealogroup_arr_type is table of tmp_dealogroup_type index by pls_integer;
+            
+            tmp_dealogroup_arr  tmp_dealogroup_arr_type;
             
             -- коллекции для временного буфера сделок.
             type ddl_tick_dbt_arr_type is table of ddl_tick_dbt%rowtype index by pls_integer;
@@ -1007,7 +1026,6 @@ is
             -- для загрузки записей из целевой системы.  После загрузки сразу переносятся в основные структуры
             tmp_ddl_tick_dbt_arr_in     ddl_tick_dbt_arr_type;
             tmp_ddl_leg_dbt_arr_in      ddl_leg_dbt_arr_type;
-            tmp_ddl_leg2_dbt_arr_in     ddl_leg_dbt_arr_type;
             
             -- для формирования выгружаемых записей
             ddl_tick_dbt_arr_out    ddl_tick_dbt_arr_type;
@@ -1018,15 +1036,20 @@ is
             main_tmp    DTXDEAL_dBT%ROWTYPE;
             add_tmp     deal_sou_add_type;
             tick_tmp    DDL_TICK_DBT%ROWTYPE;
+            leg_tmp     DDL_LEG_DBT%ROWTYPE;
+            leg2_tmp     DDL_LEG_DBT%ROWTYPE;
             date_tmp    DATE;
-            tmp_tgt_dealid  number;
+            dealid_tmp  number;
+            dealtype_tmp number;
             tmp_sou_id  number;
+            avr_fiid_tmp    number;
+            change_flag boolean := false;
             
             -- коллекции для поиска сделок в целевой системе по DEALID (для изменений-удалений) и DEALCODE (для вставок)
             -- все результаты поиска переносятся в коллекцию deal_sou_add_arr, поэтому ..TMP 
-            tmp_dealids tmp_dealid_arr_type;
-            tmp_dealcodes_in tmp_varchar_arr_type;
-            tmp_dealcodes_out tmp_varchar_arr_type;
+            tmp_dealids      tmp_dealid_arr_type;
+            tmp_dealcodes_in tmp_dealcode_arr_type;
+            tmp_dealcodes_out tmp_dealcode_arr_type;
             tmp_dealcodes_back tmp_varchar_back_arr_type;            
             
             -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
@@ -1062,7 +1085,390 @@ is
                 rate_sou_add_arr(p_counter).result := 1;
     
             end pr_include;
+
+
+            -- Процедура очистки данных.
+            -- Принимает на вход номер текущей записи в массиве l_main_tmp, преобразует null`ы в основной записи, сохраняет перекодированные значения в дополнительной записи
+            function deal_cleaning( i number ) return boolean
+            is
+                l_main_tmp DTXDEAL_DBT%ROWTYPE;
+                l_add_tmp  deal_sou_add_type;
+            begin
+            
+                        l_main_tmp := deal_sou_arr(i); 
+                        l_add_tmp  := null;
+                        
+                        l_add_tmp.tgt_dealid :=  replobj_get(c_OBJTYPE_DEAL, l_main_tmp.t_dealid).dest_id;
+                        l_add_tmp.tgt_state  :=  replobj_get(c_OBJTYPE_DEAL, l_main_tmp.t_dealid).state;
+                        deal_sou_back(l_add_tmp.tgt_dealid) :=  i; -- поисковая коллекция для обратной связи между DDL_TICK_DBT и DTXDEAL.         
+
+                        if l_add_tmp.tgt_state = 1 
+                        then 
+                                pr_exclude(206, c_OBJTYPE_DEAL, l_main_tmp.t_dealid, 0, 'Ошибка: объект находится в режиме ручного редактирования', i, p_action);
+                                return false;
+                        end if;
+                        
+                        tick_tmp.T_DEALID := l_add_tmp.tgt_dealid; -- ??? посмотрим
+                        l_main_tmp.T_EXTCODE := trim(l_main_tmp.t_extcode);
+                        l_main_tmp.T_MARKETCODE := trim(l_main_tmp.t_marketcode);
+                        l_main_tmp.T_PARTYCODE := trim(l_main_tmp.T_PARTYCODE);
+                        l_main_tmp.T_CODE := trim(l_main_tmp.T_CODE);
+                        
+                        if l_main_tmp.T_CODE is null 
+                        then 
+                                pr_exclude(539, c_OBJTYPE_DEAL, l_main_tmp.t_dealid, 0, 'Ошибка: не задан параметр T_CODE - код сделки', i, p_action);
+                                return false;
+                        end if;
+                        
+                        if l_main_tmp.T_KIND is null or l_main_tmp.T_KIND = 0
+                        then 
+                                pr_exclude(568, c_OBJTYPE_DEAL, l_main_tmp.t_dealid, 0, 'Ошибка: не задан параметр T_KIND - вид сделки', i, p_action);
+                                return false;
+                        else
+                                l_add_tmp.tgt_existback := false;
+                                l_add_tmp.tgt_objtype := 101;
+                                
+                                case l_main_tmp.T_KIND
+                                when 30 then
+                                            l_add_tmp.tgt_existback := true;
+                                when 40 then
+                                            l_add_tmp.tgt_existback := true;
+                                when 70 then
+                                            l_add_tmp.tgt_bofficekind := c_DL_RETIREMENT;
+                                            l_add_tmp.tgt_objtype := 117;
+                                when 80 then
+                                            l_add_tmp.tgt_bofficekind := c_DL_RETIREMENT;
+                                            l_add_tmp.tgt_objtype := 117;
+                                when 90 then
+                                            l_add_tmp.tgt_bofficekind := c_DL_RETIREMENT;
+                                            l_add_tmp.tgt_objtype := 117;
+                                when 100 then
+                                            l_add_tmp.tgt_bofficekind := c_DL_GET_DIVIDEND;
+                                when 110 then
+                                            l_add_tmp.tgt_bofficekind := c_DL_NTGDOC;
+                                else
+                                            l_add_tmp.tgt_bofficekind := c_DL_SECURITYDOC;
+                                end case;
+                        end if;                        
+                        
+                        l_main_tmp.T_DATE := nvl( l_main_tmp.T_DATE, date'0001-01-01' );
+                        l_main_tmp.T_TIME := nvl( (l_main_tmp.T_TIME - trunc(l_main_tmp.T_TIME)) + date'0001-01-01', date'0001-01-01' );
+                        l_main_tmp.T_CLOSEDATE := nvl( l_main_tmp.T_CLOSEDATE, date'0001-01-01');
+                        l_main_tmp.T_TSKIND := trim( l_main_tmp.t_tskind);
+                        l_main_tmp.T_ACCOUNTTYPE := nvl( l_main_tmp.T_ACCOUNTTYPE, 0);
+                        l_main_tmp.T_PARTYID := case when l_main_tmp.T_PARTYID < 1 then null else l_main_tmp.T_PARTYID end;
+                        l_main_tmp.T_PARTIALID := nvl( l_main_tmp.T_PARTIALID, 0);
+                        l_main_tmp.T_WARRANTID := nvl( l_main_tmp.T_WARRANTID, 0);
+                        l_main_tmp.T_AMOUNT := nvl( l_main_tmp.T_AMOUNT, 0);
+                        
+                        if l_main_tmp.T_AMOUNT is null 
+                        then 
+                                pr_exclude(553, c_OBJTYPE_DEAL, l_main_tmp.t_dealid, 0, 'Ошибка: не задан параметр T_AMOUNT - количество ценных бумаг', i, p_action);
+                                return false;
+                        end if;                        
+                        
+                        l_main_tmp.T_PRICE := nvl( l_main_tmp.T_PRICE, 0);
+                        l_main_tmp.T_POINT := nvl( l_main_tmp.T_POINT, 0);
+                        l_main_tmp.T_COST := nvl( l_main_tmp.T_COST, 0);
+                        l_main_tmp.T_NKD := nvl( l_main_tmp.T_NKD, 0);
+                        l_main_tmp.T_TOTALCOST := nvl( l_main_tmp.T_TOTALCOST, 0);
+                        l_main_tmp.T_RATE := nvl( l_main_tmp.T_RATE, 0);
+                        l_main_tmp.T_REPOBASE := nvl( l_main_tmp.T_REPOBASE, 0);
+                        l_main_tmp.T_ISPFI_1 := nvl( l_main_tmp.T_ISPFI_1, 0);  
+                        l_main_tmp.T_ISPFI_2 := nvl( l_main_tmp.T_ISPFI_2, 0);  
+                        l_main_tmp.T_LIMIT := nvl( l_main_tmp.T_LIMIT, 0);  
+                        l_main_tmp.T_CHRATE := nvl( l_main_tmp.T_CHRATE, 0);  
+                        l_main_tmp.T_COUNTRY := nvl( l_main_tmp.T_COUNTRY, 643);    
+                        l_main_tmp.T_CHAVR := nvl( l_main_tmp.T_CHAVR, date'0001-01-01');
+                        l_main_tmp.T_PRICE2 := nvl( l_main_tmp.T_PRICE2, 0);
+                        l_main_tmp.T_COST2 := nvl( l_main_tmp.T_COST2, 0);
+                        l_main_tmp.T_NKD2 := nvl( l_main_tmp.T_NKD2, 0);
+                        l_main_tmp.T_TOTALCOST2 := nvl( l_main_tmp.T_TOTALCOST2, 0);
+                        l_main_tmp.T_PAYDATE := nvl( l_main_tmp.T_PAYDATE, date'0001-01-01');
+                        l_main_tmp.T_SUPLDATE := nvl( l_main_tmp.T_SUPLDATE, date'0001-01-01');
+                        
+                        if l_main_tmp.T_PRICE + l_main_tmp.T_COST + l_main_tmp.T_TOTALCOST = 0
+                        then
+                            l_add_tmp.is_judicialoper := true;
+                        end if;
+                        
+                        if l_main_tmp.T_AVOIRISSID = -20
+                        then
+                            date_tmp := l_main_tmp.T_PAYDATE;
+                            l_main_tmp.T_PAYDATE := l_main_tmp.T_SUPLDATE;
+                            l_main_tmp.T_SUPLDATE := date_tmp;
+                            l_add_tmp.is_basket := true;
+                            l_add_tmp.tgt_avoirissid  :=  g_fictfi;
+                        end if;
+                        
+                        l_main_tmp.T_PAYDATE2 := nvl( l_main_tmp.T_PAYDATE2, date'0001-01-01');
+                        l_main_tmp.T_SUPLDATE2 := nvl( l_main_tmp.T_SUPLDATE2, date'0001-01-01');
+                        l_main_tmp.T_CONTRNUM := nvl( l_main_tmp.T_CONTRNUM, 0);
+                        l_main_tmp.T_CONTRDATE := nvl( l_main_tmp.T_CONTRDATE, date'0001-01-01');
+                        l_main_tmp.T_COSTCHANGE := nvl( l_main_tmp.T_COSTCHANGE, chr(0));
+                        l_main_tmp.T_COSTCHANGEONCOMP := nvl( l_main_tmp.T_COSTCHANGEONCOMP, chr(0));
+                        l_main_tmp.T_COSTCHANGEONAMOR := nvl( l_main_tmp.T_COSTCHANGEONAMOR, chr(0));
+                        
+                        if l_main_tmp.T_PAYMCUR > 0
+                        then
+                            l_add_tmp.tgt_paymcur := replobj_get( c_OBJTYPE_MONEY, l_main_tmp.T_PAYMCUR).dest_id;
+                        end if;
+                        
+                        l_main_tmp.T_DOPCONTROL := nvl( l_main_tmp.T_DOPCONTROL, 0);
+                        l_main_tmp.T_FISSKIND   := nvl( l_main_tmp.T_FISSKIND, 0);
+                        l_main_tmp.T_PRICE_CALC := nvl( l_main_tmp.T_PRICE_CALC, 0);
+                        l_main_tmp.T_PRICE_CALC_DEF := nvl( l_main_tmp.T_PRICE_CALC_DEF, 0);
+                        l_main_tmp.T_PRICE_CALC_METHOD := nvl( l_main_tmp.T_PRICE_CALC_METHOD, 0);
+                        l_main_tmp.T_PRICE_CALC_VAL := nvl( l_main_tmp.T_FISSKIND, -1);
+                        l_main_tmp.T_PRICE_CALC_VAL := nvl( l_main_tmp.T_FISSKIND, -1);
+                        l_main_tmp.T_PRICE_CALC_MET_NOTE := trim( l_main_tmp.T_PRICE_CALC_MET_NOTE);
+                        l_main_tmp.T_CONDITIONS  := trim( l_main_tmp.T_CONDITIONS);
+                        l_main_tmp.T_BALANCEDATE := nvl( l_main_tmp.T_BALANCEDATE, date'0001-01-01');
+                        l_main_tmp.T_ADJUSTMENT  := nvl( l_main_tmp.T_ADJUSTMENT, chr(0));
+                        l_main_tmp.T_ATANYDAY    := nvl( l_main_tmp.T_ATANYDAY, chr(0));
+                        l_main_tmp.T_DIV := nvl( l_main_tmp.T_DIV, chr(0));
+                        
+                        if l_main_tmp.T_PRICE_CALC_VAL = 0
+                        then 
+                            l_main_tmp.T_PRICE_CALC_VAL := -7; -- проценты
+                        else 
+                            l_main_tmp.T_PRICE_CALC_VAL := replobj_get( c_OBJTYPE_MONEY, l_main_tmp.T_PRICE_CALC_VAL).dest_id;
+                        end if;
+                        
+                        if (l_main_tmp.T_PARTYID is not null) 
+                        then
+                            l_add_tmp.tgt_party   :=  replobj_get( c_OBJTYPE_PARTY, l_main_tmp.T_PARTYID).dest_id;
+                            if  ( l_add_tmp.tgt_party = -1) and (p_action < 3 ) then
+                                pr_exclude(525, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: невозможно ничего сделать с курсом для несуществующей торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
+                                return false;
+                            end if;
+                        end if;
+                        
+                        if ( l_main_tmp.T_DEPARTMENT = 0 )
+                        then
+                            l_add_tmp.tgt_department := g_department;
+                        else
+                            l_add_tmp.tgt_department := get_dep_code( replobj_get( c_OBJTYPE_PARTY, l_main_tmp.T_DEPARTMENT).dest_id );
+                        end if;
+                        
+                        if (l_main_tmp.T_KIND = 500) or (l_main_tmp.T_KIND = 510)
+                        then
+                                l_add_tmp.is_basket := true;
+                        end if;
+                        
+                        if (l_main_tmp.T_WARRANTID > 0) 
+                        then
+                            l_add_tmp.tgt_warrantid   :=  replobj_get( c_OBJTYPE_WARRANT, l_main_tmp.T_WARRANTID).dest_id;
+                            if  l_add_tmp.tgt_warrantid = -1  then
+                                pr_exclude(525, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: для погашения не найден купон (T_WARRANTID) = ' || l_main_tmp.T_WARRANTID, i, p_action);
+                                return false;
+                            end if;
+                        end if;    
+                        
+                        if (l_main_tmp.T_PARTIALID > 0) 
+                        then
+                            l_add_tmp.tgt_partialid   :=  replobj_get( c_OBJTYPE_PARTIAL, l_main_tmp.T_PARTIALID).dest_id;
+                            if  l_add_tmp.tgt_partialid = -1  then
+                                pr_exclude(525, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: для погашения не найдено ЧП (T_PARTIALID) = ' || l_main_tmp.T_PARTIALID, i, p_action);
+                                return false;
+                            end if;
+                        end if;      
+                        
+                        if (l_main_tmp.T_PARENTID > 0) 
+                        then
+                            l_add_tmp.tgt_parentid   :=  replobj_get( c_OBJTYPE_DEAL, l_main_tmp.T_PARENTID).dest_id;
+                            if  l_add_tmp.tgt_parentid = -1  then
+                                pr_exclude(596, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: не найдена сделка РЕПО на корзину (T_PARENTID) = ' || l_main_tmp.T_PARENTID, i, p_action);
+                                return false;
+                            end if;
+                        end if;                                                                   
+
+                        l_add_tmp.tgt_avoirissid  :=  replobj_get( c_OBJTYPE_AVOIRISS, l_main_tmp.t_avoirissid).dest_id;
+                        if  ( l_add_tmp.tgt_avoirissid = -1) and (p_action < 3 ) and (l_main_tmp.t_avoirissid <> -20) then 
+                            pr_exclude(552, c_OBJTYPE_DEAL, l_main_tmp.t_dealid, 0, 'Ошибка: не найдена ценная бумага (T_AVOIRISSID) = ' || l_main_tmp.t_avoirissid, i, p_action);
+                        end if;
+
+                        l_add_tmp.tgt_currencyid  :=  replobj_get( c_OBJTYPE_MONEY, l_main_tmp.t_currencyid).dest_id;
+                        if  ( l_add_tmp.tgt_currencyid = -1 or nvl(l_main_tmp.t_currencyid,0) = 0) and (p_action < 3 ) then 
+                            pr_exclude(554, c_OBJTYPE_DEAL, l_main_tmp.t_dealid, 0, 'Ошибка: не найдена валюта сделки (T_CURRENCYID) = ' || l_main_tmp.t_currencyid, i, p_action);
+                        end if;
+
+                        l_add_tmp.tgt_nkdfiid  :=  replobj_get( c_OBJTYPE_MONEY, l_main_tmp.t_nkdfiid).dest_id;
+                        -- валюта НКД может быть не задана, тогда просто берем валюту номинала
+                        if  ( l_add_tmp.tgt_nkdfiid = -1) and (p_action < 3 ) and (nvl(l_main_tmp.t_nkdfiid,0)>0 ) then 
+                            pr_exclude(554, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: не найдена валюта НКД (T_NKDFIID) = ' || l_main_tmp.t_nkdfiid, i, p_action);
+                        end if; 
+
+                        if l_main_tmp.T_MARKETID > 0  then
+                            l_add_tmp.tgt_market   :=  replobj_get( c_OBJTYPE_MARKET, l_main_tmp.T_MARKETID).dest_id; 
+                            if  l_add_tmp.tgt_market = -1 then
+                                pr_exclude(534, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: не найден субъект T_MARKETID', i, p_action);
+                                return false;
+                            elsif  l_add_tmp.tgt_market = g_ourbank then
+                                pr_exclude(542, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: неверно задан параметр T_MARKETID, наш банк не может быть биржой', i, p_action);
+                                return false;
+                            end if;
+                            l_add_tmp.tgt_ismarketoper := true;
+                            add_type_to_subject( l_add_tmp.tgt_market, 'биржа' );
+                        else
+                            l_add_tmp.tgt_ismarketoper := false;
+                        end if;
+
+                        if l_main_tmp.T_BROKERID > 0  then
+                            l_add_tmp.tgt_broker   :=  replobj_get( c_OBJTYPE_PARTY, l_main_tmp.T_BROKERID).dest_id; 
+                            if  l_add_tmp.tgt_broker = -1 then
+                                pr_exclude(534, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: не найден субъект T_BROKERID', i, p_action);
+                                return false;
+                            elsif  l_add_tmp.tgt_broker = g_ourbank then
+                                pr_exclude(542, c_OBJTYPE_DEAL, l_main_tmp.t_dealid,  0, 'Ошибка: неверно задан параметр T_BROKERID, наш банк не может быть брокером', i, p_action);
+                                return false;
+                            end if;
+                            add_type_to_subject( l_add_tmp.tgt_broker, 'брокер' );
+                        end if;
+                        
+                        l_add_tmp.tgt_sector  :=  replobj_get( c_OBJTYPE_SECTION, l_main_tmp.T_MARKETID, l_main_tmp.T_SECTOR).dest_id;
+                        if  ( l_add_tmp.tgt_sector = -1) and ( l_main_tmp.T_SECTOR > 0 ) and (p_action > 1 ) then
+                            pr_exclude(543, c_OBJTYPE_DEAL, l_main_tmp.t_dealid, 0, 'Ошибка: не найден сектор биржи', i, p_action);
+                            return false;
+                        end if;               
+                        
+                        l_add_tmp.tgt_repobase :=
+                            case l_main_tmp.t_repobase
+                            when 1 then 1
+                            when 2 then 3
+                            when 3 then 5
+                            when 4 then 2
+                            when 5 then 0
+                            when 6 then 4
+                            else -1
+                            end;
+                        
+                        l_add_tmp.is_loan_to_repo := false;
+                        
+                        if (l_main_tmp.t_country is not null) and (l_main_tmp.t_country <> '643') 
+                        then
+                            l_add_tmp.tgt_country := country_arr(l_main_tmp.t_country);
+                        else
+                            l_add_tmp.tgt_country := null;
+                        end if;
+                            
+                        deal_sou_arr(i) := l_main_tmp;
+                        deal_sou_add_arr(i) := l_add_tmp;
+
+                    return true;
+            end deal_cleaning;
+            
+            
+            -- Процедура собирает fiid всех бумаг, найденных в буфере сделок, и загружает по ним данные
+            -- в буферную коллекцию avr_add_arr, индексированную fiid
+            procedure  filling_avoiriss_buffer
+            is
+                l_tmp_arr           tmp_arr_type;
+                l_avr_add_arr_tmp     avr_add_arr_type;
+            begin
+                -- проще взять из буфера replobj. Загружаем в вовременную коллекцию, затем переписываем в постоянную 
+                -- avr_add_arr, индекcируя по FIID
+                deb('Запущена процедура filling_avoiriss_buffer');
+                for j in replobj_rec_arr.first..replobj_rec_arr.last
+                loop
+                    if replobj_rec_arr(j).obj_type = c_OBJTYPE_AVOIRISS and replobj_rec_arr(j).DEST_ID > 0 
+                    then
+                        l_tmp_arr( l_tmp_arr.count ) := replobj_rec_arr(j).DEST_ID;
+                    end if;
+                end loop;
+                deb('Собрали ID бумаг, #1 записей', l_tmp_arr.count);
+                
+                deb('Загружаем данные по бумагам из целевой системы');
+                select fi.t_fiid, fi.t_name, av.t_isin, fi.t_facevaluefi, -1, fi.t_avoirkind, RSB_FIINSTR.FI_IsQuoted(fi.t_fiid, p_date), RSB_FIINSTR.FI_IsKSU(fi.t_fiid), -1, -1, -1, -1
+                bulk collect into l_avr_add_arr_tmp from dfininstr_dbt fi, davoiriss_dbt av where fi.t_fiid=av.t_fiid and fi.t_fiid in (select column_value from TABLE(l_tmp_arr));
+            
+                deb('Загрузили, #1 записей', l_avr_add_arr_tmp.count);
+                for j in 1..l_avr_add_arr_tmp.count
+                loop
+                    avr_add_arr( l_avr_add_arr_tmp(j).r_fiid ) := l_avr_add_arr_tmp(j);
+                end loop;
+            
+                l_avr_add_arr_tmp.delete;
+                l_tmp_arr.delete;
+                deb('Завершена процедура filling_avoiriss_buffer');
+            end filling_avoiriss_buffer;
         
+
+            function GetDealKind( p_kind number, p_add_tmp  deal_sou_add_type)    return number
+            is
+                l_dealtype_tmp number;
+                l_ismarket boolean;
+                l_fiid  number;
+            begin
+                l_fiid := p_add_tmp.tgt_avoirissid;
+                l_ismarket := case when p_add_tmp.tgt_market > 0 then true else false end;
+            
+                case p_kind
+                when    10  then
+                            if l_ismarket then
+                                l_dealtype_tmp := 2143; -- покупка биржевая
+                            else
+                                l_dealtype_tmp := 2183; -- покупка внебиржевая
+                            end if;
+                when    20  then
+                            if l_ismarket then
+                                l_dealtype_tmp := 2153; -- продажа биржевая
+                            else
+                                l_dealtype_tmp := 2193; -- продажа внебиржевая
+                            end if;                
+                when    30  then
+                            if l_ismarket then
+                                    if avr_add_arr(l_fiid).r_is_ksu = 1 then
+                                            l_dealtype_tmp := 2123; -- репо покупка биржевая КСУ
+                                    else
+                                            l_dealtype_tmp := 2122; -- репо покупка биржевая
+                                    end if;
+                            else
+                                    l_dealtype_tmp := 2132; -- репо покупка внебиржевая
+                            end if;            
+                when    40  then
+                            if l_ismarket then
+                                    if avr_add_arr(l_fiid).r_is_ksu = 1 then
+                                            l_dealtype_tmp := 2128; -- репо продажа биржевая КСУ
+                                    else
+                                            l_dealtype_tmp := 2127; -- репо продажа биржевая
+                                    end if;
+                            else
+                                    l_dealtype_tmp := 2137; -- репо продажа внебиржевая
+                            end if;
+                when    50  then
+                            l_dealtype_tmp := 2195; -- займ - привлечение
+                when    60  then
+                            l_dealtype_tmp := 2197; -- займ - размещение
+                when    70  then
+                            l_dealtype_tmp := 2021; -- погашение выпуска
+                when    80  then
+                            l_dealtype_tmp := 2022; -- погашение купона
+                when    90  then
+                            l_dealtype_tmp := 2027; -- погашение облигации частичное
+                when    100 then
+                            l_dealtype_tmp := 2105;
+                else 
+                        l_dealtype_tmp := -1;
+                end case;            
+                
+                if p_add_tmp.is_basket 
+                then
+                    if l_dealtype_tmp in (2122, 2132) then 
+                        l_dealtype_tmp := 2139; -- обратное РЕПО на корзину
+                    elsif l_dealtype_tmp in (2127, 2137) then 
+                        l_dealtype_tmp := 2139; -- прямое РЕПО на корзину
+                    else
+                        l_dealtype_tmp := -1;
+                    end if;
+                end if;   
+                
+                return l_dealtype_tmp;
+            
+            end GetDealKind;
+
+
+
 
 
 --================================================================================================================
@@ -1088,6 +1494,9 @@ is
             deb('Цикл 1 - регистрация кодов в буфере REPLOBJ');
             for i in 1..deal_sou_arr.count
             loop
+            
+                -- SGS TODO  Убрать в процедуру
+                
                 main_tmp    := deal_sou_arr(i);
                 
                 if nvl(main_tmp.t_techtype, 0) = 0
@@ -1148,389 +1557,276 @@ is
             end loop;
             deb('Собрали данные в буфер REPLOBJ, #1 записей', replobj_rec_arr.count);
             
-            -- заполняем кэш из REPLOBJ
+            -- заполняем кэш из REPLOBJ -----------------------------------------------------------------
             replobj_load;
             
-            
+            -- очищаем основную коллекцию и начинаем заполнять дополнительную ---------------------------
             deb_empty;
             deb_empty('=');
             deb('Цикл 2 - перекодирование, проверка и очистка');
             for i in 1..deal_sou_arr.count
             loop
-                        main_tmp := deal_sou_arr(i); 
-                        add_tmp  := null;
 
-                        add_tmp.tgt_dealid :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;
-                        add_tmp.tgt_state  :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).state;
-                        deal_sou_back(add_tmp.tgt_dealid) :=  i; -- поисковая коллекция для обратной связи между DDL_TICK_DBT и DTXDEAL.         
-
-                        if add_tmp.tgt_state = 1 
-                        then 
-                                pr_exclude(206, c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Ошибка: объект находится в режиме ручного редактирования', i, p_action);
-                                continue;
-                        end if;
-                        
-                        tick_tmp.T_DEALID := add_tmp.tgt_dealid; -- ??? посмотрим
-                        main_tmp.T_EXTCODE := trim(main_tmp.t_extcode);
-                        main_tmp.T_MARKETCODE := trim(main_tmp.t_marketcode);
-                        main_tmp.T_PARTYCODE := trim(main_tmp.T_PARTYCODE);
-                        main_tmp.T_CODE := trim(main_tmp.T_CODE);
-                        
-                        if main_tmp.T_CODE is null 
-                        then 
-                                pr_exclude(539, c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Ошибка: не задан параметр T_CODE - код сделки', i, p_action);
-                                continue;
-                        end if;
-                        
-                        if main_tmp.T_KIND is null or main_tmp.T_KIND = 0
-                        then 
-                                pr_exclude(568, c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Ошибка: не задан параметр T_KIND - вид сделки', i, p_action);
-                                continue;
-                        else
-                                add_tmp.tgt_existback := false;
-                                add_tmp.tgt_objtype := 101;
-                                
-                                case main_tmp.T_KIND
-                                when 30 then
-                                            add_tmp.tgt_existback := true;
-                                when 40 then
-                                            add_tmp.tgt_existback := true;
-                                when 70 then
-                                            add_tmp.tgt_bofficekind := c_DL_RETIREMENT;
-                                            add_tmp.tgt_objtype := 117;
-                                when 80 then
-                                            add_tmp.tgt_bofficekind := c_DL_RETIREMENT;
-                                            add_tmp.tgt_objtype := 117;
-                                when 90 then
-                                            add_tmp.tgt_bofficekind := c_DL_RETIREMENT;
-                                            add_tmp.tgt_objtype := 117;
-                                when 100 then
-                                            add_tmp.tgt_bofficekind := c_DL_GET_DIVIDEND;
-                                when 110 then
-                                            add_tmp.tgt_bofficekind := c_DL_NTGDOC;
-                                else
-                                            add_tmp.tgt_bofficekind := c_DL_SECURITYDOC;
-                                end case;
-                        end if;                        
-                        
-                        main_tmp.T_DATE := nvl( main_tmp.T_DATE, date'0001-01-01' );
-                        main_tmp.T_TIME := nvl( (main_tmp.T_TIME - trunc(main_tmp.T_TIME)) + date'0001-01-01', date'0001-01-01' );
-                        main_tmp.T_CLOSEDATE := nvl( main_tmp.T_CLOSEDATE, date'0001-01-01');
-                        main_tmp.T_TSKIND := trim( main_tmp.t_tskind);
-                        main_tmp.T_ACCOUNTTYPE := nvl( main_tmp.T_ACCOUNTTYPE, 0);
-                        main_tmp.T_PARTYID := case when main_tmp.T_PARTYID < 1 then null else main_tmp.T_PARTYID end;
-                        main_tmp.T_PARTIALID := nvl( main_tmp.T_PARTIALID, 0);
-                        main_tmp.T_WARRANTID := nvl( main_tmp.T_WARRANTID, 0);
-                        main_tmp.T_AMOUNT := nvl( main_tmp.T_AMOUNT, 0);
-                        
-                        if main_tmp.T_AMOUNT is null 
-                        then 
-                                pr_exclude(553, c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Ошибка: не задан параметр T_AMOUNT - количество ценных бумаг', i, p_action);
-                                continue;
-                        end if;                        
-                        
-                        main_tmp.T_PRICE := nvl( main_tmp.T_PRICE, 0);
-                        main_tmp.T_POINT := nvl( main_tmp.T_POINT, 0);
-                        main_tmp.T_COST := nvl( main_tmp.T_COST, 0);
-                        main_tmp.T_NKD := nvl( main_tmp.T_NKD, 0);
-                        main_tmp.T_TOTALCOST := nvl( main_tmp.T_TOTALCOST, 0);
-                        main_tmp.T_RATE := nvl( main_tmp.T_RATE, 0);
-                        main_tmp.T_REPOBASE := nvl( main_tmp.T_REPOBASE, 0);
-                        main_tmp.T_ISPFI_1 := nvl( main_tmp.T_ISPFI_1, 0);  
-                        main_tmp.T_ISPFI_2 := nvl( main_tmp.T_ISPFI_2, 0);  
-                        main_tmp.T_LIMIT := nvl( main_tmp.T_LIMIT, 0);  
-                        main_tmp.T_CHRATE := nvl( main_tmp.T_CHRATE, 0);  
-                        main_tmp.T_COUNTRY := nvl( main_tmp.T_COUNTRY, 643);    
-                        main_tmp.T_CHAVR := nvl( main_tmp.T_CHAVR, date'0001-01-01');
-                        main_tmp.T_PRICE2 := nvl( main_tmp.T_PRICE2, 0);
-                        main_tmp.T_COST2 := nvl( main_tmp.T_COST2, 0);
-                        main_tmp.T_NKD2 := nvl( main_tmp.T_NKD2, 0);
-                        main_tmp.T_TOTALCOST2 := nvl( main_tmp.T_TOTALCOST2, 0);
-                        main_tmp.T_PAYDATE := nvl( main_tmp.T_PAYDATE, date'0001-01-01');
-                        main_tmp.T_SUPLDATE := nvl( main_tmp.T_SUPLDATE, date'0001-01-01');
-                        
-                        if main_tmp.T_PRICE + main_tmp.T_COST + main_tmp.T_TOTALCOST = 0
-                        then
-                            add_tmp.is_judicialoper := true;
-                        end if;
-                        
-                        if main_tmp.T_AVOIRISSID = -20
-                        then
-                            date_tmp := main_tmp.T_PAYDATE;
-                            main_tmp.T_PAYDATE := main_tmp.T_SUPLDATE;
-                            main_tmp.T_SUPLDATE := date_tmp; 
-                        end if;
-                        
-                        main_tmp.T_PAYDATE2 := nvl( main_tmp.T_PAYDATE2, date'0001-01-01');
-                        main_tmp.T_SUPLDATE2 := nvl( main_tmp.T_SUPLDATE2, date'0001-01-01');
-                        main_tmp.T_CONTRNUM := nvl( main_tmp.T_CONTRNUM, 0);
-                        main_tmp.T_CONTRDATE := nvl( main_tmp.T_CONTRDATE, date'0001-01-01');
-                        main_tmp.T_COSTCHANGE := nvl( main_tmp.T_COSTCHANGE, chr(0));
-                        main_tmp.T_COSTCHANGEONCOMP := nvl( main_tmp.T_COSTCHANGEONCOMP, chr(0));
-                        main_tmp.T_COSTCHANGEONAMOR := nvl( main_tmp.T_COSTCHANGEONAMOR, chr(0));
-                        
-                        if main_tmp.T_PAYMCUR > 0
-                        then
-                            add_tmp.tgt_paymcur := replobj_get( c_OBJTYPE_MONEY, main_tmp.T_PAYMCUR).dest_id;
-                        end if;
-                        
-                        main_tmp.T_DOPCONTROL := nvl( main_tmp.T_DOPCONTROL, 0);
-                        main_tmp.T_FISSKIND   := nvl( main_tmp.T_FISSKIND, 0);
-                        main_tmp.T_PRICE_CALC := nvl( main_tmp.T_PRICE_CALC, 0);
-                        main_tmp.T_PRICE_CALC_DEF := nvl( main_tmp.T_PRICE_CALC_DEF, 0);
-                        main_tmp.T_PRICE_CALC_METHOD := nvl( main_tmp.T_PRICE_CALC_METHOD, 0);
-                        main_tmp.T_PRICE_CALC_VAL := nvl( main_tmp.T_FISSKIND, -1);
-                        main_tmp.T_PRICE_CALC_VAL := nvl( main_tmp.T_FISSKIND, -1);
-                        main_tmp.T_PRICE_CALC_MET_NOTE := trim( main_tmp.T_PRICE_CALC_MET_NOTE);
-                        main_tmp.T_CONDITIONS  := trim( main_tmp.T_CONDITIONS);
-                        main_tmp.T_BALANCEDATE := nvl( main_tmp.T_BALANCEDATE, date'0001-01-01');
-                        main_tmp.T_ADJUSTMENT  := nvl( main_tmp.T_ADJUSTMENT, chr(0));
-                        main_tmp.T_ATANYDAY    := nvl( main_tmp.T_ATANYDAY, chr(0));
-                        main_tmp.T_DIV := nvl( main_tmp.T_DIV, chr(0));
-                        
-                        if main_tmp.T_PRICE_CALC_VAL = 0
-                        then 
-                            main_tmp.T_PRICE_CALC_VAL := -7; -- проценты
-                        else 
-                            main_tmp.T_PRICE_CALC_VAL := replobj_get( c_OBJTYPE_MONEY, main_tmp.T_PRICE_CALC_VAL).dest_id;
-                        end if;
-                        
-                        if (main_tmp.T_PARTYID is not null) 
-                        then
-                            add_tmp.tgt_party   :=  replobj_get( c_OBJTYPE_PARTY, main_tmp.T_PARTYID).dest_id;
-                            if  ( add_tmp.tgt_party = -1) and (p_action < 3 ) then
-                                pr_exclude(525, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: невозможно ничего сделать с курсом для несуществующей торговой площадки, финансовый инструмент - %basefiid%', i, p_action);
-                                continue;
-                            end if;
-                        end if;
-                        
-                        if ( main_tmp.T_DEPARTMENT = 0 )
-                        then
-                            add_tmp.tgt_department := g_department;
-                        else
-                            add_tmp.tgt_department := get_dep_code( replobj_get( c_OBJTYPE_PARTY, main_tmp.T_DEPARTMENT).dest_id );
-                        end if;
-                        
-                        if (main_tmp.T_KIND = 500) or (main_tmp.T_KIND = 510)
-                        then
-                                add_tmp.is_basket := chr(88);
-                        end if;
-                        
-                        if (main_tmp.T_WARRANTID > 0) 
-                        then
-                            add_tmp.tgt_warrantid   :=  replobj_get( c_OBJTYPE_WARRANT, main_tmp.T_WARRANTID).dest_id;
-                            if  add_tmp.tgt_warrantid = -1  then
-                                pr_exclude(525, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: для погашения не найден купон (T_WARRANTID) = ' || main_tmp.T_WARRANTID, i, p_action);
-                                continue;
-                            end if;
-                        end if;    
-                        
-                        if (main_tmp.T_PARTIALID > 0) 
-                        then
-                            add_tmp.tgt_partialid   :=  replobj_get( c_OBJTYPE_PARTIAL, main_tmp.T_PARTIALID).dest_id;
-                            if  add_tmp.tgt_partialid = -1  then
-                                pr_exclude(525, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: для погашения не найдено ЧП (T_PARTIALID) = ' || main_tmp.T_PARTIALID, i, p_action);
-                                continue;
-                            end if;
-                        end if;      
-                        
-                        if (main_tmp.T_PARENTID > 0) 
-                        then
-                            add_tmp.tgt_parentid   :=  replobj_get( c_OBJTYPE_DEAL, main_tmp.T_PARENTID).dest_id;
-                            if  add_tmp.tgt_parentid = -1  then
-                                pr_exclude(596, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: не найдена сделка РЕПО на корзину (T_PARENTID) = ' || main_tmp.T_PARENTID, i, p_action);
-                                continue;
-                            end if;
-                        end if;                                                                   
-
-                        add_tmp.tgt_avoirissid  :=  replobj_get( c_OBJTYPE_AVOIRISS, main_tmp.t_avoirissid).dest_id;
-                        if  ( add_tmp.tgt_avoirissid = -1) and (p_action < 3 ) then 
-                            pr_exclude(552, c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Ошибка: не найдена ценная бумага (T_AVOIRISSID) = ' || main_tmp.t_avoirissid, i, p_action);
-                        end if;
-
-                        add_tmp.tgt_currencyid  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_currencyid).dest_id;
-                        if  ( add_tmp.tgt_currencyid = -1 or nvl(main_tmp.t_currencyid,0) = 0) and (p_action < 3 ) then 
-                            pr_exclude(554, c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Ошибка: не найдена валюта сделки (T_CURRENCYID) = ' || main_tmp.t_currencyid, i, p_action);
-                        end if;
-
-                        add_tmp.tgt_nkdfiid  :=  replobj_get( c_OBJTYPE_MONEY, main_tmp.t_nkdfiid).dest_id;
-                        -- валюта НКД может быть не задана, тогда просто берем валюту номинала
-                        if  ( add_tmp.tgt_nkdfiid = -1) and (p_action < 3 ) and (nvl(main_tmp.t_nkdfiid,0)>0 ) then 
-                            pr_exclude(554, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: не найдена валюта НКД (T_NKDFIID) = ' || main_tmp.t_nkdfiid, i, p_action);
-                        end if; 
-
-                        if main_tmp.T_MARKETID > 0  then
-                            add_tmp.tgt_market   :=  replobj_get( c_OBJTYPE_MARKET, main_tmp.T_MARKETID).dest_id; 
-                            if  add_tmp.tgt_market = -1 then
-                                pr_exclude(534, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: не найден субъект T_MARKETID', i, p_action);
-                                continue;
-                            elsif  add_tmp.tgt_market = g_ourbank then
-                                pr_exclude(542, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: неверно задан параметр T_MARKETID, наш банк не может быть биржой', i, p_action);
-                                continue;
-                            end if;
-                            add_tmp.tgt_ismarketoper := true;
-                            add_type_to_subject( add_tmp.tgt_market, 'биржа' );
-                        else
-                            add_tmp.tgt_ismarketoper := false;
-                        end if;
-
-                        if main_tmp.T_BROKERID > 0  then
-                            add_tmp.tgt_broker   :=  replobj_get( c_OBJTYPE_PARTY, main_tmp.T_BROKERID).dest_id; 
-                            if  add_tmp.tgt_broker = -1 then
-                                pr_exclude(534, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: не найден субъект T_BROKERID', i, p_action);
-                                continue;
-                            elsif  add_tmp.tgt_broker = g_ourbank then
-                                pr_exclude(542, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: неверно задан параметр T_BROKERID, наш банк не может быть брокером', i, p_action);
-                                continue;
-                            end if;
-                            add_type_to_subject( add_tmp.tgt_broker, 'брокер' );
-                        end if;
-                        
-                        add_tmp.tgt_sector  :=  replobj_get( c_OBJTYPE_SECTION, main_tmp.T_MARKETID, main_tmp.T_SECTOR).dest_id;
-                        if  ( add_tmp.tgt_sector = -1) and ( main_tmp.T_SECTOR > 0 ) and (p_action > 1 ) then
-                            pr_exclude(543, c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Ошибка: не найден сектор биржи', i, p_action);
-                            continue;
-                        end if;               
-                        
-                        add_tmp.tgt_repobase :=
-                            case main_tmp.t_repobase
-                            when 1 then 1
-                            when 2 then 3
-                            when 3 then 5
-                            when 4 then 2
-                            when 5 then 0
-                            when 6 then 4
-                            else -1
-                            end;
-                            
-                        deal_sou_arr(i) := main_tmp;
-                        deal_sou_add_arr(i) := add_tmp;
+                if not deal_cleaning(i)
+                then 
+                        continue;
+                end if;
                 
             end loop;
             
             deb_empty('=');
             deb('Заполняем буферы из целевой системы');
             -- заполняем буфер бумаг ---------------------------------------------------------------------
-            deb('Собираем данные по бумагам');
-            -- проще взять из буфера replobj. Загружаем в вовременную коллекцию, затем переписываем в постоянную 
-            -- avr_add_arr, индекcируя по FIID
-            for j in replobj_rec_arr.first..replobj_rec_arr.last
-            loop
-                if replobj_rec_arr(j).obj_type = c_OBJTYPE_AVOIRISS and replobj_rec_arr(j).DEST_ID > 0 
-                then
-                    tmp_arr( tmp_arr.count ) := replobj_rec_arr(j).DEST_ID;
-                end if;
-            end loop;
-            deb('Собрали ID бумаг, #1 записей', tmp_arr.count);
-            
-            deb('Загружаем данные по бумагам из целевой системы');
-            select fi.t_fiid, fi.t_name, av.t_isin, fi.t_facevaluefi, -1, fi.t_avoirkind, 'U', -1, -1, -1, -1
-            bulk collect into avr_add_arr_tmp from dfininstr_dbt fi, davoiriss_dbt av where fi.t_fiid=av.t_fiid and fi.t_fiid in (select column_value from TABLE(tmp_arr));
-            
-            deb('Загрузили, #1 записей', avr_add_arr_tmp.count);
-            for j in 1..avr_add_arr_tmp.count
-            loop
-                avr_add_arr( avr_add_arr_tmp(j).r_fiid ) := avr_add_arr_tmp(j);
-            end loop;
-            
-            avr_add_arr_tmp.delete;
-            tmp_arr.delete;
+
+            filling_avoiriss_buffer; 
             
             deb('Бумаги загружены, буфер подготовлен, временные массивы очищены. #1 записей', avr_add_arr.count);         
-            ---------------------------------------------------------------------------------------------------
+            ----------------------------------------------------------------------------------------------
+            -- SGS TODO Убрать в процедуру
             
             -- заполняем буфер сделок
-            -- сначала надо вытащить их в более удобную коллекцию
+            -- для операций вставки нас будет интересовать, есть ли уже сделка с таким же T_CODE. 
+            -- Только эту информацию и достаем.
+            -- Для операций обновления-удаления надо загрузить текущую сделку из целевой системы по DEALID из REPLOBJ
+            
+            -- Cначала надо вытащить DEALCODE и DEALID в более удобные коллекции
+            -- индексируем элементы по индексам deal_sou_add_arr, вдруг пригодится  
             deb_empty;
             deb('Собираем данные по сделкам в буфер');
-            for i in 1..deal_sou_add_arr.count
+            for j in 1..deal_sou_add_arr.count
             loop
                 if  main_tmp.t_action > 1  -- предполагаю убрать p_action из параметров, поэтому здесь, а не вокруг цикла
                 then
-                    tmp_dealids(tmp_dealids.count).T_DEALID := add_tmp.tgt_dealid;
-                    tmp_dealids(tmp_dealids.count).T_BOFFICEKIND := add_tmp.tgt_bofficekind;
+                    tmp_dealids(j).T_DEALID := add_tmp.tgt_dealid;
+                    tmp_dealids(j).T_BOFFICEKIND := add_tmp.tgt_bofficekind;
                 else
-                    tmp_dealcodes_in(tmp_dealcodes_in.count) := main_tmp.t_code;
+                    tmp_dealcodes_in(j).INDEX_NUM   := j;  -- привязаться по коду сделки мы не можем.
+                    tmp_dealcodes_in(j).T_DEALCODE  := main_tmp.t_code;
                 end if;
             end loop;
             deb('Собрали коды и ID сделок из загрузки. Загружаем из целевой системы..');
             
             -- теперь загружаем в кэш --
             -- по кодам --- нас интересует только факт наличия сделок ---------------------------
-            select t_dealcode bulk collect into tmp_dealcodes_out from ddl_tick_dbt where t_dealcode in (select column_value from table(tmp_dealcodes_in)) and rownum < p_emergency_limit;
+            -- по 
+            select arr.INDEX_NUM, tk.t_dealcode bulk collect into tmp_dealcodes_out from ddl_tick_dbt tk, (select * from table(tmp_dealcodes_in)) arr where tk.t_dealcode=arr.T_DEALCODE and rownum < p_emergency_limit;
             deb('Загружено сделок по кодам (DTXDEAL.T_CODE = DDL_TICK_DBT.T_DEALCODE) #1 записей из #2', tmp_dealcodes_out.count, tmp_dealcodes_in.count, p_level => 3);
-
+            -- переносим в дополнительную коллекцию 
+            for j in 1..tmp_dealcodes_out.count
+            loop
+                deal_sou_add_arr( tmp_dealcodes_out(j).INDEX_NUM ).is_matched_by_code := true;
+            end loop;
+            tmp_dealcodes_in.delete;
+            tmp_dealcodes_out.delete;
             
             -- по dealid ---------------------------------------------------------
-            select * bulk collect into tmp_ddl_tick_dbt_arr_in  from ddl_tick_dbt where (t_dealid, t_bofficekind) in (select t_dealid, t_bofficekind from table(tmp_dealids)) and rownum < p_emergency_limit ;
+            -- тикеты сделок
+            select tk.* bulk collect into tmp_ddl_tick_dbt_arr_in from ddl_tick_dbt tk, (select * from table(tmp_dealids)) arr where tk.t_dealid=arr.t_dealid and tk.t_bofficekind=arr.t_bofficekind and rownum < p_emergency_limit;
             deb('Загружено сделок (DDL_TICK_DBT) по ID (DTXREPLOBJ.T_DESTID = DDL_TICK_DBT.T_DEALID) #1 записей из #2', tmp_ddl_tick_dbt_arr_in.count, tmp_dealids.count, p_level => 3);
             if sql%rowcount = p_emergency_limit then
                 deb('Ошибка! Превышение лимита при загрузке сделок');
             end if;
-
+            -- переносим в дополнительную коллекцию 
+            for j in 1..tmp_ddl_tick_dbt_arr_in.count
+            loop
+                dealid_tmp := tmp_ddl_tick_dbt_arr_in(j).t_dealid;
+                tmp_sou_id := deal_sou_back( dealid_tmp ); 
+                deal_sou_add_arr( tmp_sou_id ).DDL_TICK_BUF := tmp_ddl_tick_dbt_arr_in(j);
+            end loop;
+            tmp_ddl_tick_dbt_arr_in.delete;
+            
+            -- группы сделок
+            select dealid, gr, RSB_SECUR.IsBuy(gr), RSB_SECUR.IsSale(gr), RSB_SECUR.IsLoan(gr), RSB_SECUR.IsRepo(gr) bulk collect into tmp_dealogroup_arr from
+            (select tk.t_Dealid dealid, RSB_SECUR.get_OperationGroup( op.t_systypes ) gr from ddl_tick_dbt tk, doprkoper_dbt op where (tk.t_dealid, tk.t_bofficekind) in (select t_dealid, t_bofficekind from table(tmp_dealids)) and rownum < p_emergency_limit 
+            and op.T_KIND_OPERATION = tk.T_DEALTYPE and op.T_DOCKIND = tk.T_BOFFICEKIND);
+            deb('Загружено сделок (DDL_TICK_DBT) по ID (DTXREPLOBJ.T_DESTID = DDL_TICK_DBT.T_DEALID) #1 записей из #2', tmp_ddl_tick_dbt_arr_in.count, tmp_dealids.count, p_level => 3);
+            if sql%rowcount = p_emergency_limit then
+                deb('Ошибка! Превышение лимита при загрузке сделок');
+            end if;
+            -- переносим в дополнительную коллекцию
+            for j in 1..tmp_dealogroup_arr.count
+            loop
+                dealid_tmp := tmp_dealogroup_arr(j).r_dealid;
+                tmp_sou_id := deal_sou_back( dealid_tmp ); 
+                deal_sou_add_arr( tmp_sou_id ).TGT_OGROUP   := tmp_dealogroup_arr(j).r_group;
+                deal_sou_add_arr( tmp_sou_id ).is_buy   := CASE tmp_dealogroup_arr(j).r_isbuy     WHEN 1 THEN true ELSE false end;
+                deal_sou_add_arr( tmp_sou_id ).is_sale  := CASE tmp_dealogroup_arr(j).r_issale    WHEN 1 THEN true ELSE false end;
+                deal_sou_add_arr( tmp_sou_id ).is_loan  := CASE tmp_dealogroup_arr(j).r_isloan    WHEN 1 THEN true ELSE false end;
+                deal_sou_add_arr( tmp_sou_id ).is_repo  := CASE tmp_dealogroup_arr(j).r_isrepo    WHEN 1 THEN true ELSE false end;
+            end loop;
+            tmp_arr1.delete;
+            tmp_arr.delete;
+            tmp_dealogroup_arr.delete;
+                        
+            -- первая нога
             select * bulk collect into tmp_ddl_leg_dbt_arr_in  from ddl_leg_dbt where t_dealid in (select t_dealid from table(tmp_dealids)) and t_legkind=0 and rownum < p_emergency_limit ;
             deb('Загружено сделок (DDL_LEG_DBT, часть 1) по ID (DTXREPLOBJ.T_DESTID = DDL_LEG_DBT.T_DEALID) #1 записей из #2', tmp_ddl_leg_dbt_arr_in.count, tmp_dealids.count, p_level => 3);
             if sql%rowcount = p_emergency_limit then
                 deb('Ошибка! Превышение лимита при загрузке сделок');
             end if;
             
-            select * bulk collect into tmp_ddl_leg2_dbt_arr_in  from ddl_leg_dbt where t_dealid in (select t_dealid from table(tmp_dealids)) and t_legkind=2 and rownum < p_emergency_limit ;
-            deb('Загружено сделок (DDL_LEG_DBT, часть 2) по ID (DTXREPLOBJ.T_DESTID = DDL_LEG_DBT.T_DEALID) #1 записей из #2', tmp_ddl_leg2_dbt_arr_in.count, tmp_dealids.count, p_level => 3);
+            for j in 1..tmp_ddl_leg_dbt_arr_in.count
+            loop
+                dealid_tmp := tmp_ddl_leg_dbt_arr_in(j).t_dealid;
+                tmp_sou_id := deal_sou_back( dealid_tmp ); 
+                deal_sou_add_arr( tmp_sou_id ).DDL_LEG1_BUF := tmp_ddl_leg_dbt_arr_in(j);
+            end loop;
+            tmp_ddl_leg_dbt_arr_in.delete;
+            
+            -- вторая нога
+            select * bulk collect into tmp_ddl_leg_dbt_arr_in  from ddl_leg_dbt where t_dealid in (select t_dealid from table(tmp_dealids)) and t_legkind=2 and rownum < p_emergency_limit ;
+            deb('Загружено сделок (DDL_LEG_DBT, часть 2) по ID (DTXREPLOBJ.T_DESTID = DDL_LEG_DBT.T_DEALID) #1 записей из #2', tmp_ddl_leg_dbt_arr_in.count, tmp_dealids.count, p_level => 3);
             if sql%rowcount = p_emergency_limit then
                 deb('Ошибка! Превышение лимита при загрузке сделок');
             end if;                        
             
-            -- dealcode. Для ускорения обработки переносим в промежуточный массив, индексированный кодом бумаги. 
-            deb('Переносим в промежуточный буфер, индексированный по коду');
-            for j in 1..tmp_dealcodes_out.count
-            loop
-                tmp_dealcodes_back( tmp_dealcodes_out(j)) := 0;
-            end loop;
-            for j in 1..deal_sou_add_arr.count
-            loop
-                if deal_sou_arr(j).t_action <> 1 
-                then 
-                    continue;  -- это интересно только для вставки
-                end if;
-                if tmp_dealcodes_back.exists( deal_sou_arr(j).T_CODE ) -- есть такой код сделки в загрузке из целевой системы
-                then
-                    deal_sou_add_arr(j).is_matched_by_code := true;
-                end if;
-            end loop;
-            
-            -- переносим в коллекцию deal_sou_add_arr
-            for j in 1..tmp_ddl_tick_dbt_arr_in.count
-            loop
-                tmp_tgt_dealid := tmp_ddl_tick_dbt_arr_in(j).t_dealid;
-                tmp_sou_id := deal_sou_back( tmp_tgt_dealid ); 
-                deal_sou_add_arr( tmp_sou_id ).DDL_TICK_BUF := tmp_ddl_tick_dbt_arr_in(j);
-            end loop;
             for j in 1..tmp_ddl_leg_dbt_arr_in.count
             loop
-                tmp_tgt_dealid := tmp_ddl_leg_dbt_arr_in(j).t_dealid;
-                tmp_sou_id := deal_sou_back( tmp_tgt_dealid ); 
-                deal_sou_add_arr( tmp_sou_id ).DDL_LEG1_BUF := tmp_ddl_leg_dbt_arr_in(j);
-            end loop;
-            
-            for j in 1..tmp_ddl_leg2_dbt_arr_in.count
-            loop
-                tmp_tgt_dealid := tmp_ddl_leg2_dbt_arr_in(j).t_dealid;
-                tmp_sou_id := deal_sou_back( tmp_tgt_dealid ); 
-                deal_sou_add_arr( tmp_sou_id ).DDL_LEG2_BUF := tmp_ddl_leg2_dbt_arr_in(j);
+                dealid_tmp := tmp_ddl_leg_dbt_arr_in(j).t_dealid;
+                tmp_sou_id := deal_sou_back( dealid_tmp ); 
+                deal_sou_add_arr( tmp_sou_id ).DDL_LEG2_BUF := tmp_ddl_leg_dbt_arr_in(j);
             end loop;    
-            
-            tmp_dealcodes_out.delete;
-            tmp_dealcodes_in.delete;
-            tmp_ddl_tick_dbt_arr_in.delete;
             tmp_ddl_leg_dbt_arr_in.delete;
-            tmp_ddl_leg2_dbt_arr_in.delete;
+            
             deal_sou_back.delete; -- тоже больше не нужен
                         
             deb('Запись в буфер данных из DDL_TICK и DDL_LEG завершена. Все буферы загружены. Вспомогательные массивы очищены.');                 
             deb_empty('=');
             ---------------------------------------------------------------------------------------
 
-        end loop;
+            deb('Цикл 3. Проверка наличия сделки в системе');
+            -- 694 стр.
+            for i in 1..deal_sou_arr.count
+            loop
+                if deal_sou_add_arr(i).result = 2
+                then continue;
+                end if;
+                
+                main_tmp := deal_sou_arr(i);
+                add_tmp  := deal_sou_add_arr(i);
+                change_flag := false;
+                
+                if  main_tmp.t_action = 1
+                then
+                    if add_tmp.is_matched_by_code 
+                    then
+                        pr_exclude(421, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: сделка уже существует в целевой системе', i, main_tmp.t_action);
+                        continue;
+                    end if;
+                
+                elsif main_tmp.t_action = 2
+                then
+                    if add_tmp.DDL_TICK_BUF.T_DEALID is null 
+                    then
+                        pr_exclude(422, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: сделка не найдена в целевой системе', i, main_tmp.t_action);
+                        continue;
+                    end if;
+                
+                    if add_tmp.tgt_bofficekind <> add_tmp.DDL_TICK_BUF.T_BOFFICEKIND
+                    then
+                        pr_exclude(547, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: при обновлении не совпадает переданный вид первичного документа сделки с таковым уже введенной сделки', i, main_tmp.t_action);
+                        continue;
+                    end if;
+                    
+                    -- проверяем необходимость трансформации займа в операцию РЕПО
+                    if add_tmp.is_loan 
+                    then
+                        CASE main_tmp.T_KIND
+                        when 30 THEN   deb('Предупреждение: сделку "Займ, привлечение" нельзя трансформировать в "РЕПО, продажа"');
+                        when 40 THEN   deb('Предупреждение: сделку "Займ, размещение" нельзя трансформировать в "РЕПО, покупка"');
+                        END CASE;
+                        deal_sou_add_arr(i).is_loan_to_repo := true;
+                    end if;                        
+                    
+                    if add_tmp.DDL_LEG1_BUF.T_DEALID is null 
+                    then
+                        pr_exclude(650, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: не найдена запись с условиями сделки (ddl_leg_dbt)', i, main_tmp.t_action);
+                        continue;
+                    end if;
+                    
+                    if add_tmp.tgt_existback and not add_tmp.is_loan_to_repo and (add_tmp.DDL_LEG2_BUF.T_DEALID is NULL)
+                    then
+                        pr_exclude(651, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: не найдена запись с условиями второй части сделки (ddl_leg_dbt)', i, main_tmp.t_action);
+                        continue;
+                    end if;
+                
+                elsif main_tmp.t_action = 3
+                then
+                    if add_tmp.DDL_TICK_BUF.T_DEALID is null 
+                    then                
+                        pr_exclude(423, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: сделка уже удалена в целевой системе', i, main_tmp.t_action);
+                        continue;
+                    end if;
+                end if;
+                
+            end loop;
+            -- завершено
+            
+            deb_empty('=');           
+            -- заполняем структуры DDL_TICK и DDL_LEG. Пока на вставку будет оптимизация в виде FORALL, изменение и удаление будут идти по одной операции.
+            -- Предполагаю, что их будет несравнимо меньше. Если что, всегда можно дописать. 
+            deb('Цикл 4. Формирование записей в целевой системе');
+            
+            for i in 1..deal_sou_arr.count
+            loop
+                if deal_sou_add_arr(i).result = 2
+                then continue;
+                end if;
+                
+                main_tmp := deal_sou_arr(i);
+                add_tmp  := deal_sou_add_arr(i);
+                                 
+                tick_tmp := null;
+                leg_tmp := null;
+                
+                tick_tmp.t_dealstatus := 2;     tick_tmp.t_oper := g_oper;      tick_tmp.t_points := 4;
+                tick_tmp.t_partyid := -1;       tick_tmp.t_clientid := -1;      tick_tmp.t_marketid := -1;
+                tick_tmp.t_brokerid := -1;      tick_tmp.t_traderid := -1;      tick_tmp.t_depositid := -1;
+                tick_tmp.t_buygoal := 0;  -- SGS заменить на BUYGOAL_RESALE
+            
+                -- определяем T_kind сделки. Нельзя сделать это в овремя очистки - нужны параметры бумаги, которые загружаются после.
+                tick_tmp.t_dealtype  := GetDealKind( main_tmp.t_kind,  add_tmp);
+                
+                if main_tmp.t_kind in (50, 60)
+                then
+                    add_tmp.is_loan := true;
+                end if;
+                
+                tick_tmp.T_DealCodeTS := main_tmp.T_EXTCODE;
+                tick_tmp.T_DealCode := main_tmp.T_CODE;
+                tick_tmp.T_DealCode := main_tmp.T_CODE;
+                tick_tmp.t_dealdate := main_tmp.T_DATE;
+                tick_tmp.t_regdate := main_tmp.T_DATE;
+                tick_tmp.t_dealtime := main_tmp.t_time;
+                tick_tmp.t_closedate := main_tmp.t_closedate;
+                tick_tmp.t_typedoc := main_tmp.t_tskind;
+                tick_tmp.t_portfolioid := main_tmp.T_PORTFOLIOID;
+                 
+                tick_tmp.t_country := add_tmp.tgt_country;
+                
+                if add_tmp.tgt_market > 0 then 
+                    tick_tmp.t_flag1 := chr(88);
+                end if;
+                
+                CASE main_tmp.T_ACCOUNTTYPE
+                when 1 then
+                    leg_tmp.t_formula := 50;  --"DVP" 
+                when 2 then
+                    leg_tmp.t_formula := 49;  --"DFP" 
+                when 3 then
+                    leg_tmp.t_formula := 52;  --"PP"
+                when 4 then
+                    leg_tmp.t_formula := 51;  --"PD"
+                else null; 
+                end case;
+
+
+
+            
+            
+            end loop; -- конец цикла 4
+
+        end loop; -- основной цикл, по порциям данных из DTXDEAL_DBT
         
         deb('Запись новых типов субъектов в таблицу dpartyown_dbt');
         upload_subject_types;
@@ -1653,6 +1949,21 @@ begin
         list_of_contrs_arr( tmp_arr(i) ) := 0;
     end loop;
     
+    -- ищем код ценной бумаги, соответствующий корзине
+    begin
+        SELECT T_FIID into g_fictfi FROM DFININSTR_DBT WHERE t_name like 'Корзина с%';
+    exception when no_data_found
+    then
+        g_fictfi := c_DEFAULT_FICTFI;
+    end;
+    
+    -- заполняем список кодов стран
+    for j in (select t_codelat3, t_codenum3 from dcountry_dbt)
+    loop
+        country_arr(j.t_codenum3) := j.t_codelat3;
+    end loop; 
+
+   
     tmp_arr.delete;
     
     
