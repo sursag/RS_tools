@@ -85,8 +85,8 @@ is
                                     tgt_parentid number,
                                     tgt_portfolioid number,
                                     tgt_repobase    number,
-                                    tgt_warrantid   number,
-                                    tgt_partialid   number,
+                                    tgt_warrant_num   number,
+                                    tgt_partial_num   number,
                                     tgt_state   number,
                                     tgt_department number,
                                     tgt_bofficekind number,
@@ -155,6 +155,33 @@ is
     -- procedure replobj_clear; -- очистка всех коллекций
     ----------------------------------------------------------------------------------------------------------------------------------------------
 
+    -- работа с категориями объектов и примечаниями.
+    -- группируем в коллекцию, потом массово вставляем
+    type note_type is record(
+                        r_objtype   number(5),
+                        r_struniid  varchar2(50),
+                        r_kind      number,
+                        r_value     varchar2(500),
+                        r_date      date
+                        );
+    type note_arr_type  is table of note_type index by pls_integer;
+    note_arr    note_arr_type;
+    
+    type categ_type is record(
+                        r_objtype   number(5),
+                        r_struniid  varchar2(50),
+                        r_kind      number,
+                        r_value     varchar2(500),
+                        r_date      date
+                        );
+    type categ_arr_type  is table of categ_type index by pls_integer;
+    categ_arr    categ_arr_type;
+    
+    -- и процедуры к ним
+    procedure add_note( p_objtype number, p_objectid number, p_kind number, p_value varchar2, p_date  date);
+    procedure write_notes;
+    procedure add_categ( p_objtype number, p_objectid number, p_kind number, p_value number, p_date  date);
+    procedure write_categs;
     ---------------------------------------------------------------------------------------------------------------------------------------------
     -- работа с логом
     type log_rows_type is table of dtxloadlog_dbt%rowtype;  -- для отложенной записи в лог.
