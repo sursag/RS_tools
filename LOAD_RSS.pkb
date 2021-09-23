@@ -6,7 +6,7 @@ is
     tmp_arr1             tmp_arr_type;
     ddp_dep_dbt_cache   tmp_arr_type;
     --tmp_reverse_arr tmp_reverse_arr_type;
-    list_of_stocks_arr   tmp_arr_type;
+    list_of_stocks_arr   tmp_arr_type; -- список бирж. 
     list_of_brokers_arr  tmp_arr_type;
     list_of_contrs_arr   tmp_arr_type;
     dpartyown_arr        dpartyown_arr_type;
@@ -38,20 +38,20 @@ is
     function add_type_to_subject( p_partyid number, p_type varchar2 ) return boolean 
     is
     begin
-        case p_type
-        when c_PTK_MARKETPLACE  then    
+        case upper(trim(p_type))
+        when 'БИРЖА'  then    
                                         if not list_of_stocks_arr.exists( p_partyid ) then
                                             list_of_stocks_arr( p_partyid ) := 1;
                                         else 
                                             return true;
                                         end if;
-        when c_PTK_BROKER       then
+        when 'БРОКЕР'       then
                                         if not list_of_brokers_arr.exists( p_partyid ) then
                                             list_of_brokers_arr( p_partyid ) := 1;
                                         else 
                                             return true;
                                         end if;        
-        when c_PTK_CONTR        then
+        when 'КОНТРАГЕНТ'        then
                                         if not list_of_contrs_arr.exists( p_partyid ) then
                                             list_of_contrs_arr( p_partyid ) := 1;
                                         else 
@@ -112,7 +112,7 @@ is
         end add_note;
         
     -- примечание к объекту добавляем в массив, чтобы потом записать в базу сразу порцию.
-    procedure add_categ( p_objtype number, p_objectid  number, p_kind number, p_value number, p_date  date)
+    procedure add_categ( p_objtype number, p_objectid  number, p_kind number, p_value varchar2, p_date  date)
         is
             categ_tmp    categ_type;
             p_struniid  varchar2(50);
@@ -135,7 +135,21 @@ is
     procedure write_categs
     is 
     begin
-        null;
+        deb('Запущена процедура WRITE_CATEGS');
+        forall i in indices of categ_arr SAVE EXCEPTIONS
+            insert into dobjatcor_dbt(t_objecttype, t_groupid, t_attrid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE)
+            select t_objecttype, t_groupid, t_attrid,  note_arr(i).r_struniid, chr(88), g_oper, date'0001-01-01', date'9999-12-31' from dobjattr_dbt 
+            where t_name = note_arr(i).r_value and t_groupid=note_arr(i).r_kind and t_objecttype=note_arr(i).r_objtype;
+            
+        commit;
+        deb('Выполнена вставка в DOBJATCOR_DBT, количество ошибок - #1', SQL%BULK_EXCEPTIONS.COUNT); 
+        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+        loop
+            deb('Ошибка #2 добавления объекту #1 категории #3', note_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_objtype || ' - ' || note_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_struniid, SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  note_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_kind  ,p_level => 5);
+        end loop;
+        
+        note_arr.delete;
+        deb('Завершена процедура WRITE_CATEGS');
     end write_categs;        
         
 
@@ -155,7 +169,246 @@ is
         end loop;
         
         note_arr.delete;
-    end write_notes;        
+        deb('Завершена процедура WRITE_NOTE');
+    end write_notes;    
+    
+    
+    -- вызывается при обработке вставки/изменения сделки. Добавляет все категории/примечания в буферы
+    procedure add_all_notes_categs(main_tmp DTXDEAL_DBT%ROWTYPE, add_tmp deal_sou_add_type)        
+    is
+        l_SetCatID number;
+        l_SetCatSTR varchar2(50);
+    begin
+        /*дополнительные условия по сделке*/
+        if main_tmp.t_conditions is not null
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 101, main_tmp.t_conditions, main_tmp.t_instancedate);
+        end if;    
+    
+        /*Код на бирже*/
+        if main_tmp.T_MARKETCODE is not null
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 102, main_tmp.T_MARKETCODE, main_tmp.t_instancedate);
+        end if;
+
+        /*Код у контрагента*/
+        if main_tmp.T_PARTYCODE is not null
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 103, main_tmp.T_PARTYCODE, main_tmp.t_instancedate);
+        end if;
+        
+        /* Расчетная цена (23) */
+        if main_tmp.T_PRICE_CALC <> 0
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 23, main_tmp.T_PRICE_CALC, main_tmp.t_instancedate);
+        end if;
+        
+        /* Отклонение от расчетной цены (27) */
+        if main_tmp.T_PRICE_CALC_DEF > 0
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 27, main_tmp.T_PRICE_CALC_DEF, main_tmp.t_instancedate);
+        end if;
+        
+        /* Единица измерения расчетной цены (28) */
+        if main_tmp.T_PRICE_CALC_VAL > 0
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 28, main_tmp.T_PRICE_CALC_VAL, main_tmp.t_instancedate);
+        end if;
+        
+        /* Примечание Расходы по оценке рыночной стоимости (116)*/
+        if main_tmp.T_PRICE_CALC_OUTLAY > 0
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 116, main_tmp.T_PRICE_CALC_OUTLAY, main_tmp.t_instancedate);
+        end if;
+        
+        /* Комментарий к допконтролю (26)*/
+        if main_tmp.T_DOPCONTROL_NOTE is not null
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 26, main_tmp.T_DOPCONTROL_NOTE, main_tmp.t_instancedate);
+        end if;
+        
+        /* Комментарий к способу определения РЦ (29)*/
+        if main_tmp.T_PRICE_CALC_MET_NOTE is not null
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 29, main_tmp.T_PRICE_CALC_MET_NOTE, main_tmp.t_instancedate);
+        end if;
+        
+        /* Валюта платежа*/
+        if main_tmp.T_PAYMCUR > 0 and currency_iso_arr.exists(main_tmp.T_PAYMCUR)
+        then
+            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 112, currency_iso_arr(main_tmp.T_PAYMCUR), main_tmp.t_instancedate);
+        end if;
+        
+        -------------------------------------------------------------------------------------------------------------------
+        -- Теперь категории
+        
+        -- Установка значения категории Сделка подлежит дополнительному контролю ( 32 )
+        if main_tmp.T_DOPCONTROL > 0 and add_tmp.tgt_BofficeKind in (c_DL_SECURITYDOC, c_DL_RETIREMENT)
+        then
+            l_SetCatID :=
+            case main_tmp.T_DOPCONTROL
+            when  1 then 1
+            when  2 then 2
+            when  3 then 3
+            when  4 then 4
+            when  5 then 5
+            when  6 then 6
+            when  7 then 9
+            when  8 then 91
+            when  9 then 92
+            when  10 then 94
+            when  11 then 95
+            when  12 then 96
+            when  13 then 13
+            when  14 then 23
+            when  15 then 25
+            when  16 then 7
+            when  17 then 8
+            when  18 then 38
+            when  19 then 938
+            when  20 then 93
+            when  21 then 913
+            when  22 then 925
+            else main_tmp.T_DOPCONTROL
+            end;
+            
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 32, l_SetCatID, main_tmp.t_instancedate);
+        end if;
+    
+        -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
+        if main_tmp.T_COSTCHANGEONCOMP = chr(0)
+        then
+            l_SetCatID := 0;
+        else
+            l_SetCatID := 1;
+        end if; 
+        add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 21, l_SetCatID, main_tmp.t_instancedate);
+        
+
+        -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
+        if main_tmp.T_COSTCHANGEONAMOR = chr(0)
+        then
+            l_SetCatID := 0;
+        else
+            l_SetCatID := 1;
+        end if; 
+        add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 22, l_SetCatID, main_tmp.t_instancedate);        
+        
+
+        -- Установка значения категории Вид сделок ФИСС ( 33 )
+        if main_tmp.T_FISSKIND > 0
+        then
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 33, main_tmp.T_FISSKIND, main_tmp.t_instancedate);
+        end if;
+        
+        
+        -- Установка значения категории Способ определения РЦ ( 34 )
+        if main_tmp.T_PRICE_CALC_METHOD > 0
+        then
+            l_SetCatSTR := case main_tmp.T_PRICE_CALC_METHOD
+                      when 1  then '10-00'
+                      when 2  then '10-80'                      
+                      when 3  then '11-00'        
+                      when 4  then '11-01'        
+                      when 5  then '12-50'
+                      when 6  then '12-51'
+                      when 7  then '12-80'
+                      when 8  then '12-81'
+                      when 9  then '19-00'
+                      when 10 then '20-80'
+                      when 11 then '21-00'
+                      when 12 then '21-01'
+                      when 13 then '22-10'
+                      when 14 then '22-11'
+                      when 15 then '22-20'
+                      when 16 then '22-21'                      
+                      when 17 then '22-30'        
+                      when 18 then '22-31'        
+                      when 19 then '22-40'
+                      when 20 then '22-41'
+                      when 21 then '22-50'
+                      when 22 then '22-51'
+                      when 23 then '22-60'
+                      when 24 then '22-61'
+                      when 25 then '22-70'
+                      when 26 then '22-71'
+                      when 27 then '22-80'
+                      when 28 then '22-81'
+                      when 29 then '29-00'
+                      when 30 then '31-00'
+                      when 31 then '31-01'
+                      when 32 then '32-50'
+                      when 33 then '32-51'
+                      when 34 then '99-00'
+                      when 35 then '11-80'
+                      when 36 then '11-81'                                                                                                                                                                                
+                      else 'null'
+                      end;
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 34, l_SetCatSTR, main_tmp.t_instancedate);
+        end if;
+        
+        -- Признак урегулирования требований по ст.282 НК РФ.
+        if main_tmp.T_ADJUSTMENT is not null
+        then
+            if main_tmp.T_ADJUSTMENT = chr(0) then 
+                l_SetCatSTR := 0;
+            else
+                l_SetCatSTR := 1;
+            end if;
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 19, l_SetCatSTR, main_tmp.t_instancedate);
+        end if;
+        
+        -- Признак ограничения прав покупателя по сделке РЕПО - "Блокировка ц/б" 
+        if main_tmp.T_LIMIT is not null
+        then
+            if main_tmp.T_LIMIT = chr(0) then 
+                l_SetCatSTR := 0;
+            else
+                l_SetCatSTR := 1;
+            end if;
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 103, l_SetCatSTR, main_tmp.t_instancedate);
+        end if;
+        
+        -- Признак изменения ставки - "Плавающая ставка" 
+        if main_tmp.T_CHRATE is not null
+        then
+            if main_tmp.T_CHRATE = chr(0) then 
+                l_SetCatSTR := 0;
+            else
+                l_SetCatSTR := 1;
+            end if;
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 26, l_SetCatSTR, main_tmp.t_instancedate);
+        end if;
+        
+        -- Признак изменения ставки - "Принадлежность дивидендов"  
+        if main_tmp.T_DIV is not null
+        then
+            if main_tmp.T_DIV = chr(0) then 
+                l_SetCatSTR := 0;
+            else
+                l_SetCatSTR := 1;
+            end if;
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 25, l_SetCatSTR, main_tmp.t_instancedate);
+        end if;           
+        
+        -- Признак исполнения сделки в любой день  
+        if main_tmp.T_ATANYDAY is not null
+        then
+            if main_tmp.T_ATANYDAY = chr(0) then 
+                l_SetCatSTR := 0;
+            else
+                l_SetCatSTR := 1;
+            end if;
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 20, l_SetCatSTR, main_tmp.t_instancedate);
+        end if;  
+        
+        -- "Место заключения сделки"  
+        if main_tmp.T_COUNTRY is not null and add_tmp.tgt_bofficekind=c_DL_SECURITYDOC and main_tmp.T_COUNTRY <> 158
+        then
+            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 105, main_tmp.T_COUNTRY, main_tmp.t_instancedate);
+        end if;                  
+             
+    end add_all_notes_categs;
     
     
     procedure deb_empty(p_line char := null) -- пустая строка в поток отладочных комментариев
@@ -192,13 +445,18 @@ is
         v_searchstr := to_char(p_objtype) || '#' || to_char(p_obj_id) || '#' || to_char(p_obj_sub_id);
         if not replobj_rec_inx_arr.exists(v_searchstr) then
             mas_idx := nvl(replobj_rec_arr.last,-1)+1;  -- count нельзя, '-1'й элемент потом добавится
-            replobj_rec_arr(mas_idx).obj_type := p_objtype;
-            replobj_rec_arr(mas_idx).obj_id := p_obj_id;
-            replobj_rec_arr(mas_idx).obj_sub_id := p_obj_sub_id;
-            replobj_rec_arr(mas_idx).comment := p_comment;
-            replobj_rec_arr(mas_idx).dest_id := -1;  
+            replobj_rec_arr(mas_idx).obj_type   := p_objtype;
+            replobj_rec_arr(mas_idx).obj_id     := p_obj_id;
+            if p_objtype in (c_OBJTYPE_SECTION, c_OBJTYPE_RATE)
+            then
+                replobj_rec_arr(mas_idx).obj_sub_id := p_obj_sub_id;
+            else
+                replobj_rec_arr(mas_idx).obj_sub_id := 0;
+            end if; 
+            replobj_rec_arr(mas_idx).comment    := p_comment;
+            replobj_rec_arr(mas_idx).dest_id    := -1;  
             -- запись в индексную коллекцию
-            replobj_rec_inx_arr( v_searchstr ) := mas_idx;
+            replobj_rec_inx_arr( v_searchstr )  := mas_idx;
         end if;
         
         if  p_destid <> -1
@@ -245,7 +503,7 @@ is
             v_counter := load_rss.replobj_rec_arr.first; 
             while (v_counter is not null)
             loop
-                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_id || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
+                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || lpad(load_rss.replobj_rec_arr(v_counter).obj_id, 20, ' ') || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
                 v_counter := replobj_rec_arr.next(v_counter);
             end loop;
             deb( '>  Количество записей в поисковом индексе replobj ПЕРЕД загрузкой: ' ||load_rss.replobj_rec_inx_arr.count() );
@@ -260,7 +518,7 @@ is
         
         --deb( 'Количество записей в буфере replobj_tmp_arr: ' ||load_rss.replobj_tmp_arr.count() );
         SELECT ro.* BULK COLLECT INTO replobj_tmp_arr
-        FROM dtxreplobj_dbt ro, (select * from table(replobj_rec_arr)) inp where t_objecttype = inp.obj_type and t_objectid = inp.obj_id and (t_subobjnum = obj_sub_id or obj_sub_id = 0) and t_objstate != 2 and inp.dest_id=-1 and inp.obj_id>0;
+        FROM dtxreplobj_dbt ro, (select * from table(replobj_rec_arr)) inp where t_objecttype = inp.obj_type and t_objectid = inp.obj_id and (ro.t_subobjnum = obj_sub_id or obj_sub_id = 0) and t_objstate != 2 and inp.dest_id=-1 and inp.obj_id>0;
 
         deb( 'Загружено #1 записей', SQL%ROWCOUNT);
         IF SQL%ROWCOUNT = emerg_limit THEN
@@ -272,9 +530,14 @@ is
         FOR i in 1..replobj_tmp_arr.count
         LOOP
             -- определяем индекс элемента в основном массиве
-            v_search_str := to_char(replobj_tmp_arr(i).t_objecttype) || '#' || to_char(replobj_tmp_arr(i).t_objectid) || '#' || nvl(to_char(replobj_tmp_arr(i).t_subobjnum),'0');
+            if replobj_tmp_arr(i).t_objecttype in (c_OBJTYPE_SECTION, c_OBJTYPE_RATE)
+            then
+                v_search_str := to_char(replobj_tmp_arr(i).t_objecttype) || '#' || to_char(replobj_tmp_arr(i).t_objectid) || '#' || nvl(to_char(replobj_tmp_arr(i).t_subobjnum),'0');
+            else
+                v_search_str := to_char(replobj_tmp_arr(i).t_objecttype) || '#' || to_char(replobj_tmp_arr(i).t_objectid) || '#' || '0';
+            end if; 
             v_search_idx := replobj_rec_inx_arr(v_search_str);  -- нашли индекс записи в основном массиве
-            deb( '>  Индекс_в_массиве - Поисковая_строка - Значение_t_destid: \t\t' ||v_search_idx || '\t\t' ||v_search_str || '\t\t' || replobj_tmp_arr(i).T_DESTID);
+            deb( '>  Индекс_в_массиве - Поисковая_строка - Значение_t_destid: \t\t' ||v_search_idx || '\t\t' || lpad(v_search_str, 20, ' ') || '\t\t' || replobj_tmp_arr(i).T_DESTID);
             -- адресуем элемент
             replobj_rec_arr(v_search_idx).dest_id := replobj_tmp_arr(i).T_DESTID;
             replobj_rec_arr(v_search_idx).state := replobj_tmp_arr(i).t_objstate;
@@ -300,7 +563,7 @@ is
             v_counter := load_rss.replobj_rec_arr.first; 
             while (v_counter is not null)
             loop
-                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_id || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
+                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || lpad(load_rss.replobj_rec_arr(v_counter).obj_id, 20, ' ') || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
                 v_counter := replobj_rec_arr.next(v_counter);
             end loop;
             deb( '>  Количество записей в поисковом индексе replobj ПОСЛЕ загрузки: ' ||load_rss.replobj_rec_inx_arr.count() );
@@ -1072,7 +1335,7 @@ is
                                     r_coupon_num_tgt number,
                                     r_party_num_tgt number
                                   );
-            type avr_add_arr_type is table of avr_add_record;   
+            type avr_add_arr_type is table of avr_add_record index by pls_integer;   
             
             avr_add_arr         avr_add_arr_type; -- коллекция бумаг, индексированная FIID
             
@@ -1146,27 +1409,27 @@ is
             
             -- сохраняем все добавленные сделки
                 -- все примечания к объектам из буфера записываются в базу. Буфер очищается.
-            procedure write_deals
+            procedure write_deals_to_ddltick
             is
             begin
                 deb('Запущена процедура WRITE_DEALS');
-                deb('Вставка тикетов сделок DDL_TICK_DBT');
+                deb('Вставка тикетов сделок DDL_TICK_DBT, в коллекции #1 записей', ddl_tick_dbt_arr_out.count);
                 forall i in indices of ddl_tick_dbt_arr_out SAVE EXCEPTIONS
                         insert into ddl_tick_dbt
                         values ddl_tick_dbt_arr_out(i);
                 
-                deb('Выполнена вставка в DDL_TICK_DBT, количество ошибок - #1', SQL%BULK_EXCEPTIONS.COUNT); 
+                deb('Выполнена вставка в DDL_TICK_DBT, добавлено - #1, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT); 
                 for i in 1..SQL%BULK_EXCEPTIONS.COUNT
                 loop
                     deb('Ошибка вставки сделки (ddl_tick_dbt) #2:  #1 ', SQL%BULK_EXCEPTIONS(i).ERROR_CODE,   ddl_tick_dbt_arr_out( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).t_dealid, p_level => 5);
                 end loop;
                 
-                deb('Вставка ценовых условий сделок DDL_LEG_DBT');
+                deb('Вставка ценовых условий сделок DDL_LEG_DBT, в коллекции #1 записей', ddl_leg_dbt_arr_out.count);
                 forall i in indices of ddl_leg_dbt_arr_out SAVE EXCEPTIONS
                         insert into ddl_leg_dbt
                         values ddl_leg_dbt_arr_out(i);
                 
-                deb('Выполнена вставка в DDL_LEG_DBT, количество ошибок - #1', SQL%BULK_EXCEPTIONS.COUNT); 
+                deb('Выполнена вставка в DDL_LEG_DBT, добавлено - #1, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT);  
                 for i in 1..SQL%BULK_EXCEPTIONS.COUNT
                 loop
                     deb('Ошибка вставки сделки (ddl_leg_dbt) #2:  #1 ', SQL%BULK_EXCEPTIONS(i).ERROR_CODE,   ddl_leg_dbt_arr_out( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).t_dealid, p_level => 5);
@@ -1176,21 +1439,80 @@ is
                 ddl_tick_dbt_arr_out.delete;
                 deb('Очистка буфера сделок ddl_leg_dbt_arr_out');
                 ddl_leg_dbt_arr_out.delete;                
-            end write_deals;   
+            end write_deals_to_ddltick;   
+
+
+            -- после репликации порции сделок заполняет таблицу dtxreplobj
+            procedure write_deals_to_replobj
+            is
+            begin
+                deb('Запущена процедура  write_deals_to_replobj');
+                -- todo переделать на table()
+                forall i in indices of deal_sou_arr SAVE EXCEPTIONS
+                    delete from dtxreplobj_dbt
+                    where T_OBJECTTYPE = 80 and T_OBJECTID = deal_sou_arr(i).t_dealid and deal_sou_add_arr(i).result < 2; -- только для успешно загруженных записей
+                    
+                forall i in indices of deal_sou_arr SAVE EXCEPTIONS
+                    insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
+                    select 80, deal_sou_arr(i).t_dealid, 0, deal_sou_add_arr(i).tgt_dealid, 0, 0 from dual
+                    where deal_sou_add_arr(i).result < 2; -- только для успешно загруженных записей
+                deb('Обработано #1 записей', SQL%ROWCOUNT);
+                deb('Завершена процедура  write_deals_to_replobj');    
+            end write_deals_to_replobj;
+
+           
+            -- проставляет сделкам в dtxdeal признак удачной-неудачной репликации
+            procedure update_dtxdeal
+            is
+            begin
+                deb('Запущена процедура  update_dtxdeal');
+                forall i in indices of deal_sou_arr SAVE EXCEPTIONS
+                    update dtxdeal_dbt set t_replstate=deal_sou_add_arr(i).result 
+                    where deal_sou_add_arr(i).result in (1,2) and t_dealid=deal_sou_arr(i).t_dealid 
+                    and t_instancedate=deal_sou_arr(i).t_instancedate and t_replstate=0;
+                deb('Обработано #1 записей', SQL%ROWCOUNT);
+                deb('Завершена процедура  update_dtxdeal');
+            end update_dtxdeal;
+          
+            
+
+            
+            -- запись в БД (dspground_dbt, dspgrdoc_dbt) из буфера таблиц договоров
+            procedure write_grounds
+            is
+            begin
+                deb('Запущена процедура  write_grounds');
+                
+                forall i in indices of dspground_arr save exceptions
+                    insert into dspground_dbt( t_kind, t_DocLog, t_Direction, t_Receptionist, t_References, t_AltXld, t_SignedDate, t_Party)
+                    values (26, 513, 2, g_oper, 1, dspground_arr(i).r_AltXld, dspground_arr(i).r_SignedDate, dspground_arr(i).r_party);
+            
+                forall i in indices of dspground_arr save exceptions
+                    delete dspgrdoc_dbt where t_SourceDocKind=dspground_arr(i).r_BofficeKind and t_SourceDocID=dspground_arr(i).r_dealid and t_SPGroundID=dspground_arr(i).r_spgroundid;
+                    
+                forall i in indices of dspground_arr save exceptions
+                    insert into dspgrdoc_dbt( t_SourceDocKind, t_SourceDocID, t_SPGroundID)
+                    values (dspground_arr(i).r_BofficeKind, dspground_arr(i).r_dealid, dspground_arr(i).r_spgroundid);
+
+                deb('Завершена процедура  write_grounds');
+            end write_grounds;
+            
             
             -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
             procedure pr_exclude(p_code number, p_objtype number, p_id number, p_subnum number := 0, p_text varchar2, p_counter number, p_action number, p_silent boolean := false)
             is
                 text_corr varchar2(1000);
-                v_row DTXCOURSE_DBT%ROWTYPE;
+                v_row DTXDEAL_DBT%ROWTYPE;
             begin
                 deb('Запущена процедура  pr_exclude');
-                v_row := rate_sou_arr(p_counter);
+                v_row := deal_sou_arr(p_counter);
                 text_corr := replace(p_text, '%act%',  (case p_action when 1 then 'Вставка' when 2 then 'изменение' when 3 then 'удаление' end) );
+                /*
                 text_corr := replace(text_corr, '%fiid%', v_row.t_fiid);
                 text_corr := replace(text_corr, '%basefiid%', v_row.t_basefiid);
                 text_corr := replace(text_corr, '%type%', v_row.t_type);
                 text_corr := replace(text_corr, '%date%', to_char(v_row.t_ratedate,'dd.mm.yyyy'));
+                */
                 -- потом заменить на add_log_deferred
                 if not p_silent
                 then
@@ -1208,7 +1530,7 @@ is
             begin
                 deb('Запись обработана успешно! Процедура pr_include для записи номер #1', p_counter, p_level => 3);
                 
-                rate_sou_add_arr(p_counter).result := 1;
+                deal_sou_add_arr(p_counter).result := 1;
     
             end pr_include;
 
@@ -1599,7 +1921,8 @@ is
                         
                         l_add_tmp.is_loan_to_repo := false;
                         
-                        if (l_main_tmp.t_country is not null) and (l_main_tmp.t_country <> '643') 
+                        deb('Перекодируем страну из ' || l_main_tmp.t_country, p_level=>5);
+                        if (l_main_tmp.t_country is not null) and (l_main_tmp.t_country <> '643') and (l_main_tmp.t_country <> '165')  
                         then
                             l_add_tmp.tgt_country := country_arr(l_main_tmp.t_country);
                         else
@@ -1747,8 +2070,77 @@ is
             
             end GetDealKind;
 
-
-
+            -- Добавляет платеж по NEEDDEMAND в буфер 
+            procedure add_auto_demands( p_main_tmp DTXDEAL_DBT%ROWTYPE, p_tick_tmp DDL_TICK_DBT%ROWTYPE, p_leg_tmp DDL_LEG_DBT%ROWTYPE)
+            is
+                demand_tmp  demand_type;
+            begin
+                -- постоянные поля
+                demand_tmp.r_action   := 1;
+                demand_tmp.r_olddealid := p_main_tmp.t_dealid;
+                demand_tmp.tgt_docid  := p_leg_tmp.t_dealid;
+                demand_tmp.r_isauto   := true;
+                demand_tmp.r_isfact   := true;
+                if p_tick_tmp.t_marketid > 0 
+                then
+                    demand_tmp.tgt_party := p_tick_tmp.t_marketid;
+                else 
+                    demand_tmp.tgt_party := p_tick_tmp.t_partyid;
+                end if;
+                demand_tmp.r_note   := chr(1);    
+                demand_tmp.r_state  := 3;
+                if p_leg_tmp.t_legkind=0 
+                then
+                    demand_tmp.r_part   := 1;
+                else
+                    demand_tmp.r_part   := 2;
+                end if;
+                                    
+                -- платеж по бумагам ------------------------------------------------------------------
+                if  p_main_tmp.t_kind not in (80,90,110) and p_tick_tmp.T_PFI <> c_DEFAULT_FICTFI
+                then
+                    demand_tmp.r_fikind := 20; -- вид инструменты - ц/б
+                    demand_tmp.r_kind   := 10; -- поставка ц/б
+                    demand_tmp.tgt_fiid := p_leg_tmp.t_pfi;
+                    if p_leg_tmp.T_MATURITYISPRINCIPAL = chr(88)
+                    then
+                        demand_tmp.r_date   := p_leg_tmp.t_maturity;
+                    else
+                        demand_tmp.r_date   := p_leg_tmp.t_expiry;
+                    end if;
+                    
+                    if p_main_tmp.t_kind = 10 or (p_main_tmp.t_kind in (30,60) and  p_leg_tmp.t_legkind=0) 
+                    then
+                        demand_tmp.r_direction := 1; -- наше требование
+                    else  
+                        demand_tmp.r_direction := 2; -- наше обязательство
+                    end if;
+                    demand_tmp.r_sum    := p_leg_tmp.t_principal;
+                    demand_tmp.r_result := 0;                 
+                   add_demand( demand_tmp );
+                end if;
+                    
+                -- платеж по деньгам ------------------------------------------------------------------
+                demand_tmp.r_fikind := 10;
+                demand_tmp.r_kind   := 40;
+                demand_tmp.tgt_fiid := p_leg_tmp.t_cfi;
+                if p_leg_tmp.T_MATURITYISPRINCIPAL = chr(88)
+                then
+                    demand_tmp.r_date   := p_leg_tmp.t_expiry;
+                else
+                    demand_tmp.r_date   := p_leg_tmp.t_maturity;
+                end if;
+                demand_tmp.r_sum    := p_leg_tmp.t_totalcost;
+                if p_main_tmp.t_kind = 10 or (p_main_tmp.t_kind in (30,60) and  p_leg_tmp.t_legkind=0) 
+                then
+                    demand_tmp.r_direction := 2; -- наше обязательство
+                else  
+                    demand_tmp.r_direction := 1; -- наше требование
+                end if;                
+                demand_tmp.r_sum    := p_leg_tmp.t_totalcost;
+                demand_tmp.r_result := 0;
+                
+            end add_auto_demands;
 
 
 --================================================================================================================
@@ -1779,7 +2171,7 @@ is
                 
                 main_tmp    := deal_sou_arr(i);
                 
-                if nvl(main_tmp.t_techtype, 0) = 0
+                if nvl(main_tmp.t_techtype, 0) <> 0
                 then
                     deb('Обнаружена техническая сделка, dealid = #1', main_tmp.t_dealid);
                                                 add_log(527, 80, main_tmp.t_dealid,  0, 'Предупреждение: техническая сделка в систему не реплицируется', main_tmp.t_instancedate);
@@ -1788,8 +2180,8 @@ is
                 end if;                            
     
                 -- собираем уникальные fiid
-                replobj_add( c_OBJTYPE_MONEY, main_tmp.t_paymcur );
-                replobj_add( c_OBJTYPE_MONEY, main_tmp.t_currencyid );
+                replobj_add( c_OBJTYPE_MONEY, main_tmp.t_paymcur, 0 ); -- надо выяснить, зачем валютам subobjnum
+                replobj_add( c_OBJTYPE_MONEY, main_tmp.t_currencyid, 0 );
                 replobj_add( c_OBJTYPE_AVOIRISS, main_tmp.t_avoirissid );
 
                 -- собираем уникальные MARKETID
@@ -1894,6 +2286,7 @@ is
             -- переносим в дополнительную коллекцию 
             for j in 1..tmp_dealcodes_out.count
             loop
+                deb ( tmp_dealcodes_out(j).INDEX_NUM );
                 deal_sou_add_arr( tmp_dealcodes_out(j).INDEX_NUM ).is_matched_by_code := true;
             end loop;
             tmp_dealcodes_in.delete;
@@ -2009,12 +2402,13 @@ is
                     end if;
                     
                     -- проверяем необходимость трансформации займа в операцию РЕПО
-                    if add_tmp.is_loan 
+                    if add_tmp.is_loan and main_tmp.T_KIND in (30,40) 
                     then
-                        CASE main_tmp.T_KIND
-                        when 30 THEN   deb('Предупреждение: сделку "Займ, привлечение" нельзя трансформировать в "РЕПО, продажа"');
-                        when 40 THEN   deb('Предупреждение: сделку "Займ, размещение" нельзя трансформировать в "РЕПО, покупка"');
-                        END CASE;
+                        IF      main_tmp.T_KIND <> 30 and add_tmp.is_buy 
+                            THEN deb('Предупреждение: сделку "Займ, привлечение" нельзя трансформировать в "РЕПО, продажа"');
+                        elsif   main_tmp.T_KIND <> 40 and add_tmp.is_sale
+                            THEN deb('Предупреждение: сделку "Займ, размещение" нельзя трансформировать в "РЕПО, покупка"');
+                        END IF;
                         deal_sou_add_arr(i).is_loan_to_repo := true;
                     end if;                        
                     
@@ -2084,13 +2478,17 @@ is
                                
                 tick_tmp.T_DealCodeTS := main_tmp.T_EXTCODE;
                 tick_tmp.T_DealCode := main_tmp.T_CODE;
-                tick_tmp.T_DealCode := main_tmp.T_CODE;
+                tick_tmp.T_bofficekind := add_tmp.tgt_bofficekind;
                 tick_tmp.t_dealdate := main_tmp.T_DATE;
                 tick_tmp.t_regdate := main_tmp.T_DATE;
                 tick_tmp.t_dealtime := main_tmp.t_time;
                 tick_tmp.t_closedate := main_tmp.t_closedate;
                 tick_tmp.t_typedoc := main_tmp.t_tskind;
                 tick_tmp.t_portfolioid := main_tmp.T_PORTFOLIOID;
+                tick_tmp.t_marketid := add_tmp.tgt_market;
+                tick_tmp.t_marketofficeid := add_tmp.tgt_sector;
+                tick_tmp.t_brokerid := add_tmp.tgt_broker;
+                tick_tmp.t_partyid := add_tmp.tgt_party;
                  
                 tick_tmp.t_country := add_tmp.tgt_country;
                 
@@ -2124,6 +2522,7 @@ is
                             tick_tmp.t_number_coupon := add_tmp.tgt_warrant_num;
                 when 90 then
                             tick_tmp.t_number_partly := add_tmp.tgt_partial_num;
+                else null;
                 end case; 
 
                 if main_tmp.T_COSTCHANGE = CHR(88)
@@ -2148,6 +2547,7 @@ is
                 end case;
 
                 leg1_tmp.t_pfi := add_tmp.tgt_avoirissid;
+                leg1_tmp.t_cfi := add_tmp.tgt_currencyid;
             
                 if avr_add_arr( leg1_tmp.t_pfi ).r_isbond = 1 and tick_tmp.t_bofficekind <> c_DL_RETIREMENT
                 then
@@ -2248,7 +2648,7 @@ is
                 leg1_tmp.t_legkind   :=  0;
                 leg1_tmp.t_LegID     :=  0;
                 leg1_tmp.t_BASIS     :=  0;
-                if main_tmp.T_REPOBASE <> -1
+                if main_tmp.T_REPOBASE > 0
                 then
                     leg1_tmp.t_BASIS := main_tmp.T_REPOBASE - 1;
                 end if;
@@ -2437,15 +2837,40 @@ is
                     delete from ddlrq_dbt where t_docid = tick_tmp.t_dealid;
                         
                 end if; 
-
+                
+                -- сделка обработана успешно. Проставляем код успешного выполнения и DEALID в дополнительную коллекцию
+                pr_include(i);
+                deal_sou_add_arr(i).TGT_DEALID := tick_tmp.t_dealid;
+                
+                -- добавление примечаний и категорий объектов по сделке в буфер
+                if main_tmp.t_action in (1,2)
+                then
+                    add_all_notes_categs(main_tmp, add_tmp);
+                end if;
             
+                if main_tmp.t_needdemand = chr(88)
+                then
+                    -- добавление платежей
+                    add_auto_demands(main_tmp, tick_tmp, leg1_tmp);
+                end if;
+                
+                if main_tmp.t_needdemand2 = chr(88)
+                then
+                    -- добавление платежей
+                    add_auto_demands(main_tmp, tick_tmp, leg2_tmp);
+                end if;
+                
             end loop; -- конец цикла 4
             
             -- сохраняем все добавленные сделки
-            write_deals;
-            -- сохраняем все добавленные примечания
+            write_deals_to_ddltick;
+            write_deals_to_replobj;
+            update_dtxdeal;
+            -- сохраняем все добавленные примечания и категории
             write_notes;
             write_categs;           
+            -- сохраняем договоры по сделкам и привязку к сделкам
+            write_grounds;
         end loop; -- основной цикл, по порциям данных из DTXDEAL_DBT
         
         deb('Запись новых типов субъектов в таблицу dpartyown_dbt');
@@ -2454,9 +2879,86 @@ is
     end load_deals; 
 
 
+    -- процедура загрузки платежей
+    procedure load_demands(p_date date, p_action number)
+    is
+    begin
+        null;
+    end load_demands;
 
 
 
+    -- процедура добавления платежа в кэш DEMAND_RQ_ARR
+    procedure   add_demand (p_demand   demand_type)
+    is
+        rq_tmp  ddlrq_dbt%rowtype;
+        add_tmp demand_add_type;
+        
+        index_tmp    number;
+    begin
+        deb('Запущена процедура ADD_DEMAND');
+        
+        if p_demand.r_action = 1
+        then
+            rq_tmp.t_id := ddlrq_dbt_seq.nextval; 
+        else    
+            rq_tmp.t_id := p_demand.tgt_demandid;
+        end if;
+                
+        rq_tmp.t_docid      :=  p_demand.tgt_docid;
+        rq_tmp.t_dealpart   :=  p_demand.r_part;
+        rq_tmp.t_DocKind    :=  p_demand.tgt_dockind;
+
+        if p_demand.r_isfact 
+        then
+            rq_tmp.t_State      := 2;
+            rq_tmp.t_FactDate   := p_demand.r_date;
+            rq_tmp.t_PlanDate   := date'0001-01-01';
+            rq_tmp.t_changedate := date'0001-01-01';
+        else
+            rq_tmp.t_state := 0;
+            rq_tmp.t_factDate   := date'0001-01-01';
+            rq_tmp.t_PlanDate   := p_demand.r_date;
+            rq_tmp.t_changedate := p_demand.r_date;  
+        end if;    
+
+        if p_demand.r_isnetting
+        then 
+            rq_tmp.t_netting := chr(88);
+        end if;
+        rq_tmp.t_amount  :=  p_demand.r_sum;
+        rq_tmp.t_fiid    :=  p_demand.tgt_fiid;
+      
+        rq_tmp.t_ID_Step       := 2908;
+        rq_tmp.t_RqAccID       := -1;
+        rq_tmp.t_PlaceID       := -1;
+        rq_tmp.t_Instance      := 0;
+        rq_tmp.t_Action        := 0;
+        rq_tmp.t_ID_Operation  := 0;
+        rq_tmp.t_Source        := 0;
+        rq_tmp.t_SourceObjKind := -1;
+        rq_tmp.t_SourceObjID   := 0;
+        
+        add_tmp.r_olddealid    := p_demand.r_olddealid;
+        add_tmp.t_oldobjtype   := p_demand.t_oldobjtype;
+        add_tmp.r_result       := 0;
+        
+        index_tmp := demand_rq_arr.count; 
+        demand_rq_arr( index_tmp )  := rq_tmp;
+        demand_add_arr( index_tmp ) := add_tmp;
+        
+        deb('Процедура ADD_DEMAND завершена');
+    end add_demand;
+    
+    -- процедура записи платежей из кэша в БД. Используется в load_demands и load_deals
+    procedure   write_demands
+    is
+    begin
+        deb('Запущена процедура WRITE_DEMANDS');
+        
+        deb('Процедура WRITE_DEMANDS завершена');
+    end write_demands;
+    
 
 
 
@@ -2578,9 +3080,10 @@ begin
     end;
     
     -- заполняем список кодов стран
-    for j in (select t_codelat3, t_codenum3 from dcountry_dbt)
+    for j in (select t_countryid, t_codelat3, t_codenum3 from dcountry_dbt)
     loop
-        country_arr(j.t_codenum3) := j.t_codelat3;
+        --country_arr(j.t_codenum3) := j.t_codelat3;
+        country_arr(j.t_countryid) := j.t_codelat3;
     end loop; 
 
     -- заполняем список ISO кодов валют (для примечания Валюта платежа)
