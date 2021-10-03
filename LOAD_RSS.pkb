@@ -3,7 +3,7 @@ is
 
    
     tmp_arr             tmp_arr_type;
-    tmp_arr1             tmp_arr_type;
+    tmp_arr1            tmp_arr_type;
     ddp_dep_dbt_cache   tmp_arr_type;
     --tmp_reverse_arr tmp_reverse_arr_type;
     list_of_stocks_arr   tmp_arr_type; -- список бирж. 
@@ -152,7 +152,7 @@ is
         deb('Завершена процедура WRITE_CATEGS');
     end write_categs;        
         
-
+    
     -- все примечания к объектам из буфера записываются в базу. Буфер очищается.
     procedure write_notes
     is
@@ -2076,11 +2076,13 @@ is
                 demand_tmp  demand_type;
             begin
                 -- постоянные поля
-                demand_tmp.r_action   := 1;
-                demand_tmp.r_olddealid := p_main_tmp.t_dealid;
-                demand_tmp.tgt_docid  := p_leg_tmp.t_dealid;
-                demand_tmp.r_isauto   := true;
-                demand_tmp.r_isfact   := true;
+                demand_tmp.r_action         := 1;
+                demand_tmp.r_oldobjectid    := p_main_tmp.t_dealid;
+                demand_tmp.tgt_docid        := p_leg_tmp.t_dealid;
+                demand_tmp.r_isauto         := true;
+                demand_tmp.r_isfact         := true;
+                demand_tmp.r_destsubobjnum  := 1;  -- непонятно, зачем. так в исходном алгоритме
+                
                 if p_tick_tmp.t_marketid > 0 
                 then
                     demand_tmp.tgt_party := p_tick_tmp.t_marketid;
@@ -2116,8 +2118,16 @@ is
                         demand_tmp.r_direction := 2; -- наше обязательство
                     end if;
                     demand_tmp.r_sum    := p_leg_tmp.t_principal;
-                    demand_tmp.r_result := 0;                 
-                   add_demand( demand_tmp );
+                    demand_tmp.r_result := 0;         
+                    
+                    if demand_tmp.r_part = 1
+                    then
+                        demand_tmp.r_subobjnum  := 81;
+                    else
+                        demand_tmp.r_subobjnum  := 82;
+                    end if;
+                            
+                    add_demand( demand_tmp );
                 end if;
                     
                 -- платеж по деньгам ------------------------------------------------------------------
@@ -2139,6 +2149,15 @@ is
                 end if;                
                 demand_tmp.r_sum    := p_leg_tmp.t_totalcost;
                 demand_tmp.r_result := 0;
+                
+                if demand_tmp.r_part = 1
+                    then
+                        demand_tmp.r_subobjnum  := 83;
+                    else
+                        demand_tmp.r_subobjnum  := 84;
+                end if;
+                
+                add_demand( demand_tmp );
                 
             end add_auto_demands;
 
@@ -2869,6 +2888,8 @@ is
             -- сохраняем все добавленные примечания и категории
             write_notes;
             write_categs;           
+            -- вставляем платежи
+            write_demands;
             -- сохраняем договоры по сделкам и привязку к сделкам
             write_grounds;
         end loop; -- основной цикл, по порциям данных из DTXDEAL_DBT
@@ -2882,8 +2903,167 @@ is
     -- процедура загрузки платежей
     procedure load_demands(p_date date, p_action number)
     is
+        cursor m_cur(pp_date date, pp_action number) is select * from DTXDEMAND_DBT where t_instancedate between pp_date and pp_date+1 and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action; 
+        demand_tmp demand_type;
+        main_tmp   dtxdemand_dbt%rowtype;
+        error_found boolean := false;
+        tmp_number  number;
+        tmp_string  varchar2(500);
+        
+        -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
+        procedure pr_exclude(p_errnum number, p_id number, p_text varchar2, p_counter number, p_action number, p_silent boolean := false)
+            is
+                text_corr varchar2(1000);
+                v_row DTXDEMAND_DBT%ROWTYPE;
+            begin
+                deb('Запущена процедура  pr_exclude');
+                v_row := demand_sou_arr(p_counter);
+                text_corr := replace(p_text, '%act%',  (case p_action when 1 then 'Вставка' when 2 then 'изменение' when 3 then 'удаление' end) );
+
+                -- потом заменить на add_log_deferred
+                if not p_silent
+                then
+                    add_log( p_errnum, 90, p_id, 0, text_corr, v_row.t_instancedate);
+                end if;
+    
+                -- исключаем элемент
+                demand_sou_arr.delete(p_counter);
+            end pr_exclude;
+        
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
+--================================================================================================================
     begin
-        null;
+        deb_empty('=');
+
+        deb('Запущена процедура  LOAD_DEMANDS за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
+        
+        open m_cur(p_date, p_action);
+        loop
+            -- загрузка порции данных
+            fetch m_cur bulk collect into demand_sou_arr limit g_limit;
+            exit when demand_sou_arr.count=0;
+            deb('Загружены данные из DTXDEMAND_DBT, #1 строк', m_cur%rowcount);
+
+            -- регистрируем все сущности для загрузки из REPLOBJ
+            deb_empty('=');
+            deb('Цикл 1 - очистка данных и регистрация кодов в буфере REPLOBJ');
+            for i in 1..demand_sou_arr.count
+            loop
+                main_tmp    := demand_sou_arr(i);
+                
+                if main_tmp.t_action < 3
+                then
+                    tmp_string := null;
+                    if      nvl(main_tmp.t_dealid,0) = 0
+                    then
+                        tmp_string := 'Не задан номер сделки для платежа';
+                    elsif   nvl(main_tmp.t_part,0) = 0
+                    then
+                        tmp_string := 'Не задан номер части сделки для платежа';        
+                    elsif   nvl(main_tmp.t_kind,0) = 0
+                    then
+                        tmp_string := 'Не задан t_kind платежа';    
+                    elsif   nvl(main_tmp.t_direction,0) = 0
+                    then
+                        tmp_string := 'Не задано t_direction - направление платежа';                            
+                    elsif   nvl(main_tmp.t_fikind,0) = 0
+                    then
+                        tmp_string := 'Не задано t_fikind  платежа';                            
+                    elsif   nvl(main_tmp.t_direction,0) = 0
+                    then
+                        tmp_string := 'Не задано t_direction - направление платежа';                            
+                    elsif   nvl(main_tmp.t_date, date'0001-01-01') = date'0001-01-01'
+                    then
+                        tmp_string := 'Не задано t_date - дата платежа';  
+                    elsif   nvl(main_tmp.t_sum,0) = 0
+                    then
+                        tmp_string := 'Не задано t_sum - сумма платежа';                         
+                    elsif   nvl(main_tmp.t_state,0) = 0
+                    then
+                        tmp_string := 'Не задано t_state - статус платежа'; 
+                    elsif   nvl(main_tmp.t_paycurrencyid,0) = 0 and main_tmp.t_fikind=10 
+                    then
+                        tmp_string := 'Не задано t_paycurrencyid - статус платежа';
+                    end if;
+                    
+                    if tmp_string is not null
+                    then
+                        pr_exclude(207, main_tmp.t_demandid, tmp_string, i, main_tmp.t_action);
+                        deb('Ошибка. Платеж ' || main_tmp.t_demandid || '.  ' || tmp_string);
+                        continue;
+                    end if;        
+
+                    -- собираем уникальные fiid
+                    replobj_add( c_OBJTYPE_MONEY,   main_tmp.t_paycurrencyid, 0 );
+                    -- сделка
+                    replobj_add( c_OBJTYPE_DEAL, main_tmp.T_DEALID);
+
+                end if;    
+
+                -- собственно, платеж
+                if p_action > 1 then
+                    replobj_add( c_OBJTYPE_PAYMENT, main_tmp.T_DEMANDID);
+                end if;
+                
+            end loop;
+            deb('Собрали данные в буфер REPLOBJ, #1 записей', replobj_rec_arr.count);
+            
+            -- заполняем кэш из REPLOBJ -----------------------------------------------------------------
+            replobj_load;
+            
+            -- очищаем данные и передаем в add_demand ---------------------------
+            deb_empty;
+            deb_empty('=');
+            
+            deb('Цикл 2 - проверка данных в целевой системе и передача платажа в add_demand');
+            for i in 1..demand_sou_arr.count
+            loop
+                main_tmp    := demand_sou_arr(i);
+                
+                demand_tmp.tgt_demandid :=  replobj_get(c_OBJTYPE_PAYMENT, main_tmp.t_demandid).dest_id;
+                demand_tmp.tgt_docid    :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;
+                tmp_number              :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).state;
+                if tmp_number = 1 
+                then 
+                    error_found := true;
+                    add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: Т/О по сделке ' ||  main_tmp.t_dealid || ' находится в режиме ручного редактирования', main_tmp.t_instancedate);
+                end if;
+                
+                if nvl(main_tmp.t_demandid,0) > 0 and demand_tmp.tgt_docid = -1 
+                then 
+                    error_found := true;
+                    add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: отсутствует сделка по платежу ' ||  main_tmp.t_dealid, main_tmp.t_instancedate);
+                end if;
+                
+                if nvl(main_tmp.t_paycurrencyid,0) > 0 
+                then
+                    demand_tmp.tgt_fiid     :=  replobj_get(c_OBJTYPE_MONEY, main_tmp.t_paycurrencyid).dest_id;
+                    if demand_tmp.tgt_fiid = -1 
+                    then    
+                        error_found := true;
+                        add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: не найдена валюта платежа ' || main_tmp.t_paycurrencyid || ' в Т/О по сделке ' ||  main_tmp.t_dealid , main_tmp.t_instancedate);
+                    end if;
+                end if;                
+                
+                
+            end loop; -- конец цикла 2
+
+                -- собираем сделки в коллекцию
+                
+                -- достаем фининструмент из сделок
+                
+                -- переносим в более удобную коллекцию, индексируем по dealid
+                
+                -- назначаем фининструмент и передаем в add_demand             
+
+        end loop; -- конец главного цикла.
+
+        deb('Записываем платежи в БД');
+        write_demands;
+        deb('Завершена процедура  LOAD_DEMANDS');
+        
     end load_demands;
 
 
@@ -2894,7 +3074,7 @@ is
         rq_tmp  ddlrq_dbt%rowtype;
         add_tmp demand_add_type;
         
-        index_tmp    number;
+        index_tmp    pls_integer;
     begin
         deb('Запущена процедура ADD_DEMAND');
         
@@ -2928,7 +3108,31 @@ is
         end if;
         rq_tmp.t_amount  :=  p_demand.r_sum;
         rq_tmp.t_fiid    :=  p_demand.tgt_fiid;
+        
+        rq_tmp.t_type    :=
+        case p_demand.r_kind
+            when 10 then 8 -- поставка
+            when 20 then 0 -- задаток
+            when 30 then 1 -- аванс
+            when 40 then 2 -- оплата
+            when 50 then 3 -- проценты
+            when 60 then 8 -- итоговая поставка
+            when 70 then 2 -- итоговая оплата
+            when 80 then 4 -- выплата купонного дохода
+            when 90 then 5 -- частичное погашение
+            when 100 then 10 -- выплата дивидендов
+            when 110 then 7  -- компенсационная оплата
+            when 120 then 9  -- компенсационная поставка
+            else -1
+        end;
       
+        if rq_tmp.t_type in (8,9)
+        then
+            rq_tmp.t_subkind := 1; -- ценные бумаги
+        else
+            rq_tmp.t_subkind := 0; -- деньги
+        end if;
+        
         rq_tmp.t_ID_Step       := 2908;
         rq_tmp.t_RqAccID       := -1;
         rq_tmp.t_PlaceID       := -1;
@@ -2939,10 +3143,13 @@ is
         rq_tmp.t_SourceObjKind := -1;
         rq_tmp.t_SourceObjID   := 0;
         
-        add_tmp.r_olddealid    := p_demand.r_olddealid;
-        add_tmp.t_oldobjtype   := p_demand.t_oldobjtype;
+        -- здесь сохраняем дополнительные параметры, которые нужны для dtxdemand, dtxreplobj
+        add_tmp.r_oldobjectid  := p_demand.r_oldobjectid;
+        add_tmp.r_subobjnum   := p_demand.r_subobjnum;
+        add_tmp. r_destsubobjnum := p_demand.r_destsubobjnum;     
         add_tmp.r_result       := 0;
         
+        -- запись в коллекцию
         index_tmp := demand_rq_arr.count; 
         demand_rq_arr( index_tmp )  := rq_tmp;
         demand_add_arr( index_tmp ) := add_tmp;
@@ -2953,9 +3160,87 @@ is
     -- процедура записи платежей из кэша в БД. Используется в load_demands и load_deals
     procedure   write_demands
     is
+        type indexes_by_type is table of pls_integer index by pls_integer;
+        indexes_insert  indexes_by_type;
+        indexes_update  indexes_by_type;
+        indexes_delete  indexes_by_type;
     begin
         deb('Запущена процедура WRITE_DEMANDS');
         
+        -- есть три коллекции (выше), которые будут содержать индексы элементов из demand_rq_arr, разделенные по действиям
+        -- заполняем их. 
+        for i in 1..demand_rq_arr.count
+        loop
+            case demand_add_arr(i).r_action
+                when 1 then indexes_insert( indexes_insert.count ) := i;
+                when 2 then indexes_update( indexes_update.count ) := i;
+                when 3 then indexes_delete( indexes_delete.count ) := i;
+            end case;
+        end loop;
+        
+        -- вставка. потом выводим сообщение об ошибке и проставляем флаги ошибок в дополнительную коллекцию
+        forall i in values of indexes_insert
+            insert into ddlrq_dbt values demand_rq_arr(i);
+        
+        deb('Выполнена вставка в DOBJATCOR_DBT, количество записей - #1, количество ошибок - #2', indexes_insert.count, SQL%BULK_EXCEPTIONS.COUNT); 
+        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+        loop
+            deb('Ошибка #3 вставки платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+            demand_add_arr( indexes_insert(i) ).r_result := 2; -- флаг ошибки
+        end loop;
+        
+        -- изменение
+        forall i in values of indexes_update
+            update ddlrq_dbt set row=demand_rq_arr(i) where t_id=demand_rq_arr(i).t_id;
+
+        deb('Выполнена вставка в DOBJATCOR_DBT, количество записей - #1, количество ошибок - #2', indexes_insert.count, SQL%BULK_EXCEPTIONS.COUNT); 
+        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+        loop
+            deb('Ошибка #3 вставки платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+            demand_add_arr( indexes_update(i) ).r_result := 2;            
+        end loop;
+        
+        -- удаление
+        forall i in values of indexes_delete
+            delete ddlrq_dbt where t_id=demand_rq_arr(i).t_id;
+        
+        deb('Выполнена вставка в DOBJATCOR_DBT, количество записей - #1, количество ошибок - #2', indexes_insert.count, SQL%BULK_EXCEPTIONS.COUNT); 
+        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+        loop
+            deb('Ошибка #3 вставки платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+            demand_add_arr( indexes_delete(i) ).r_result := 2;
+        end loop;
+
+        commit;
+        
+        -- заполняем dtxreplobj_dbt. Только для успешно обработанных записей
+        forall i in indices of demand_rq_arr
+            insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
+            select 90, demand_add_arr(i).r_oldobjectid, demand_add_arr(i).r_subobjnum, demand_rq_arr(i).t_id, demand_add_arr(i).r_destsubobjnum, 0  from dual
+            where demand_add_arr(i).r_result <> 2;
+            
+        deb('Выполнена вставка в DTXREPLOBJ_DBT, количество записей - #1, количество ошибок - #2', demand_rq_arr.count, SQL%BULK_EXCEPTIONS.COUNT); 
+        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+        loop
+            deb('Ошибка #3 вставки в DTXREPLOBJ_DBT записи о платеже #1 (сделка #2)', demand_rq_arr(i).t_id, demand_rq_arr(i).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+        end loop;            
+        
+        -- проставляем replstate=1 для всех успешно обработанных платежей
+        forall i in indices of demand_rq_arr
+            update dtxdemand_dbt 
+            set t_replstate=1 where t_demandid = demand_add_arr(i).r_oldobjectid  
+            and demand_add_arr(i).r_result <> 2 and demand_add_arr(i).r_subobjnum = 0;  -- для автоплатежей с r_subobjnum 81-84 не заполняем 
+
+        deb('Выполнено обновление t_replstate в DTXDEMAND_DBT, количество записей - #1, количество ошибок - #2', demand_rq_arr.count, SQL%BULK_EXCEPTIONS.COUNT); 
+        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+        loop
+            deb('Ошибка #3 обновления DTXDEMAND_DBT.t_replstate для платежа #1 (сделка #2)', demand_rq_arr(i).t_id, demand_rq_arr(i).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+        end loop;  
+
+        -- буферные коллекции больше не нужны
+        demand_rq_arr.delete;
+        demand_add_arr.delete;
+
         deb('Процедура WRITE_DEMANDS завершена');
     end write_demands;
     

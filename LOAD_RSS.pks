@@ -134,6 +134,11 @@ is
     -- вместо вспомогательной коллекции сразу формируем запись, вмещающую все необходимые параметры,
     -- уже перекодированные. Нужно, поскольку платежи могут формироваться не только из DTXDEMAND_DBT,
     -- но и из сделок. Нужна минимальная структура для передачи параметров.
+    
+    -- то есть, для остальных типов объектов присутствует основная коллекция из источника (входной буфер), дополнительная коллекция,
+    -- индексированная так же, и коллекция, содержащая записи в формате целевой системы ( назовем ее выходной буфер )
+    -- здесь же дополнительная коллекция сопровождает не входной буфер, а выходной. И задача процедуры load_demand - только передать
+    -- данные в add_demand, последующая их обработка не на ней.
     type demand_type is record(
                             tgt_demandid    number,
                             tgt_docid   number,
@@ -145,31 +150,38 @@ is
                             r_isfact    boolean,
                             r_isnetting boolean,
                             r_part      number(1),
-                            r_kind      number(2),
-                            r_direction number(1),
-                            r_fikind    number(2), 
+                            r_kind      number(2), -- в кодировке таблицы dtxdemand: 10-поставка ц/б, 40-оплата, 
+                            r_direction number(1), -- 1-требования, 2-обязательства
+                            r_fikind    number(2), -- 10-деньги, 20-бумаги
                             r_state     number(2),
                             r_sum       number,
                             r_note      varchar2(500),
                             r_date      date,
-                            r_olddealid number,  -- номер из dtxdemand для простановки replstate
-                            t_oldobjtype number, -- вид объекта из dtxdemand для простановки replstate
-                            r_result    number(1)
+                            r_oldobjectid number,  -- номер из dtxdemand для простановки replstate
+                            r_subobjnum number,    -- что должно проставиться в dtxreplobj.T_SUBOBJNUM
+                            r_destsubobjnum number,-- что должно проставиться в dtxreplobj.T_DESTSUBOBJNUM
+                            r_result    number(1)  -- статус. 0 - нормально, 2 - ошибка в параметрах платежа
                             );
                                     
-    -- небольшая коллекция записей, которая будет сопровождать структуру RQ для работы с DTXDEMAND_DBT и DTXREPLOBJ_DBT. Где-то надо держать DTXDEMAND_DBT.t_demandid 
+
+    -- выходная структура. Заполняется, затем разом записывается    
+    type demand_rq_arr_type is table of ddlrq_dbt%rowtype index by pls_integer;
+    demand_rq_arr   demand_rq_arr_type;
+    
+    -- дополнительная коллекция записей, которая сопровождает структуру RQ для работы с DTXDEMAND_DBT и DTXREPLOBJ_DBT. Где-то надо держать DTXDEMAND_DBT.t_demandid 
     type demand_add_type is record(
-                            r_olddealid number,
-                            t_oldobjtype number,
-                            r_result    number(1)
+                            r_oldobjectid number,
+                            r_subobjnum number,
+                            r_destsubobjnum number,
+                            r_action    number,
+                            r_result    number(1) -- статус. 0 - нормально, 2 - техническая ошибка при вставке платежа
                             );
     type demand_add_arr_type is table of demand_add_type index by pls_integer;
     demand_add_arr      demand_add_arr_type; 
                        
-    -- выходная структура. Заполняется, затем разом записывается    
-    type demand_rq_arr_type is table of ddlrq_dbt%rowtype;
-    demand_rq_arr   demand_rq_arr_type;
-                                                          
+                                      
+    
+                    
     -- процедура добавления платежа в кэш DEMAND_RQ_ARR
     procedure   add_demand (p_demand   demand_type);
     -- процедура записи платежей из кэша в БД. Используется в load_demands и load_deals
