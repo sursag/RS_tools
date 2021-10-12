@@ -3027,6 +3027,18 @@ is
     procedure load_demands(p_date date, p_action number)
     is
         cursor m_cur(pp_date date, pp_action number) is select * from DTXDEMAND_DBT where t_instancedate between pp_date and pp_date+1 and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action; 
+        
+        -- коллекция t_dealid, индексация произвольная. Сюда собираем id сделок для загрузки данных по ним
+        tick_by_demand_arr  tmp_arr_type;
+        -- коллекция для временного и постоянного буферов сделок. Временный индексирован произвольно, постоянный - t_dealid  
+        type ddl_tick_dbt_arr_type is table of ddl_tick_dbt%rowtype index by pls_integer;
+        deal_tmp                ddl_tick_dbt%rowtype;
+        ddl_tick_dbt_arr_tmp    ddl_tick_dbt_arr_type;
+        ddl_tick_dbt_arr        ddl_tick_dbt_arr_type;
+        -- коллекция t_fiid, индексированная t_dealid
+        -- fiid_by_tick_arr    tmp_arr_type;
+        
+        
         demand_tmp demand_type;
         main_tmp   dtxdemand_dbt%rowtype;
         error_found boolean := false;
@@ -3095,9 +3107,6 @@ is
                     elsif   nvl(main_tmp.t_fikind,0) = 0
                     then
                         tmp_string := 'Не задано t_fikind  платежа';                            
-                    elsif   nvl(main_tmp.t_direction,0) = 0
-                    then
-                        tmp_string := 'Не задано t_direction - направление платежа';                            
                     elsif   nvl(main_tmp.t_date, date'0001-01-01') = date'0001-01-01'
                     then
                         tmp_string := 'Не задано t_date - дата платежа';  
@@ -3140,8 +3149,9 @@ is
             -- очищаем данные и передаем в add_demand ---------------------------
             deb_empty;
             deb_empty('=');
+            tick_by_demand_arr.delete;
             
-            deb('Цикл 2 - проверка данных в целевой системе и передача платажа в add_demand');
+            deb('Цикл 2 - проверка качества данных');
             for i in 1..demand_sou_arr.count
             loop
                 main_tmp    := demand_sou_arr(i);
@@ -3161,7 +3171,7 @@ is
                     add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: отсутствует сделка по платежу ' ||  main_tmp.t_dealid, main_tmp.t_instancedate);
                 end if;
                 
-                if nvl(main_tmp.t_paycurrencyid,0) > 0 
+                if main_tmp.t_fikind = 10  -- денежный платеж 
                 then
                     demand_tmp.tgt_fiid     :=  replobj_get(c_OBJTYPE_MONEY, main_tmp.t_paycurrencyid).dest_id;
                     if demand_tmp.tgt_fiid = -1 
@@ -3171,16 +3181,70 @@ is
                     end if;
                 end if;                
                 
+                -- собираем ID сделок для загрузки в буфер
+                tick_by_demand_arr( tick_by_demand_arr.count ) := demand_tmp.tgt_docid;                
                 
             end loop; -- конец цикла 2
 
-                -- собираем сделки в коллекцию
+            deb('Загружаем тикеты сделок в буфер для определения fiid бумаг, #1 сделок в запросе', tick_by_demand_arr.count);
+            select * bulk collect into ddl_tick_dbt_arr_tmp from ddl_tick_dbt where t_dealid in (select column_value from table(tick_by_demand_arr));
+            deb('Загружено #1 тикетов', sql%rowcount);
+            
+            -- Перегружаем fiid из тикетов в коллекцию, индексированную сделкой
+            for j in 1..ddl_tick_dbt_arr_tmp.count
+            loop
+                ddl_tick_dbt_arr( ddl_tick_dbt_arr_tmp(j).t_dealid ) := ddl_tick_dbt_arr_tmp(j);
+            end loop;
+            -- временные коллекции больше не нужны
+            ddl_tick_dbt_arr_tmp.delete;
+            tick_by_demand_arr.delete;
+            deb('Создан буфер сделок, #1 записей', ddl_tick_dbt_arr.count);
+            
+            deb('Цикл 3 - назначение валюты платежа (для бумаг) и передача платажа в add_demand');
+            for i in 1..demand_sou_arr.count
+            loop
+                main_tmp    := demand_sou_arr(i);
+                                
+                demand_tmp.tgt_demandid :=  replobj_get(c_OBJTYPE_PAYMENT, main_tmp.t_demandid).dest_id;
+                demand_tmp.tgt_docid    :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;                
                 
-                -- достаем фининструмент из сделок
+                deal_tmp    := ddl_tick_dbt_arr( demand_tmp.tgt_docid );
                 
-                -- переносим в более удобную коллекцию, индексируем по dealid
+                if main_tmp.t_fikind=10
+                then
+                    demand_tmp.tgt_fiid     :=  replobj_get(c_OBJTYPE_MONEY, main_tmp.t_paycurrencyid).dest_id;
+                else 
+                    demand_tmp.tgt_fiid     :=  deal_tmp.t_pfi;
+                end if;
+
+                demand_tmp.r_action         := main_tmp.t_action;
+                demand_tmp.r_oldobjectid    := main_tmp.t_demandid;
+                demand_tmp.tgt_dockind      := deal_tmp.T_BOFFICEKIND;
+                demand_tmp.r_isauto         := false;
+                demand_tmp.r_isfact         := case main_tmp.t_isfact when chr(88) then true else false end;
+                demand_tmp.r_destsubobjnum  := 1;  -- непонятно, зачем. так в исходном алгоритме
+                demand_tmp.r_kind           := main_tmp.t_kind;
+                demand_tmp.r_direction      := main_tmp.t_direction;
                 
-                -- назначаем фининструмент и передаем в add_demand             
+                if deal_tmp.t_marketid > 0 
+                then
+                    demand_tmp.tgt_party := deal_tmp.t_marketid;
+                else 
+                    demand_tmp.tgt_party := deal_tmp.t_partyid;
+                end if;
+                
+                demand_tmp.r_note   := main_tmp.t_note;
+                demand_tmp.r_date   := main_tmp.t_date;    
+                demand_tmp.r_state  := 3;
+                demand_tmp.r_part   := main_tmp.t_part;
+                demand_tmp.r_sum    := main_tmp.t_sum;
+                demand_tmp.r_subobjnum := 0;
+                
+                add_demand( demand_tmp );
+
+            end loop; -- конец цикла 3    
+
+            -- примечания
 
         end loop; -- конец главного цикла.
 
@@ -3293,6 +3357,7 @@ is
         index_tmp := demand_rq_arr.count; 
         demand_rq_arr( index_tmp )  := rq_tmp;
         demand_add_arr( index_tmp ) := add_tmp;
+        deb('Платеж добавлен (всего в буфере demand_rq_arr = #1): t_docid=#2, t_type=#3, t_fiid=' || rq_tmp.t_fiid || ', t_dealpart=' || rq_tmp.t_dealpart || ', t_state=' || rq_tmp.t_State , demand_rq_arr.count, rq_tmp.t_docid, rq_tmp.t_type, p_level=>5);
         
         deb('Завершена процедура ADD_DEMAND');
     end add_demand;
@@ -3306,6 +3371,9 @@ is
         indexes_insert  indexes_by_type;
         indexes_update  indexes_by_type;
         indexes_delete  indexes_by_type;
+        
+        insert_count  number := 0; -- количество пробных вставок. Если в течение их происходят ошибки, откатываемся, корректируем t_num и повторяем.
+        insert_count_limit constant number := 3;  -- максимальное количество попыток записи. Если после этого остаются ошибки, просто фиксируем их
     begin
         execute immediate 'alter trigger DDLRQ_DBT_TBI disable';
         
@@ -3313,7 +3381,7 @@ is
         deb('Количество записей в буфере платежей - #1 (#2)',  demand_rq_arr.count, demand_add_arr.count);
         if demand_rq_arr.count > 0
         then
-        
+            deb('Распределяем платежи по типам действия:');
             -- есть три коллекции (выше), которые будут содержать индексы элементов из demand_rq_arr, разделенные по действиям
             -- заполняем их. 
             for i in demand_rq_arr.first..demand_rq_arr.last
@@ -3324,50 +3392,83 @@ is
                     when 3 then indexes_delete( indexes_delete.count ) := i;
                 end case;
             end loop;
-            
+            deb('Вставка: #1, обновление: #2, удаление: #3', indexes_insert.count, indexes_update.count, indexes_delete.count);
              
-            -- вставка. потом выводим сообщение об ошибке и проставляем флаги ошибок в дополнительную коллекцию
-            forall i in values of indexes_insert
-                delete ddlrq_dbt where T_DOCKIND=demand_rq_arr(i).T_DOCKIND and T_DOCID=demand_rq_arr(i).T_DOCID and T_DEALPART=demand_rq_arr(i).T_DEALPART and T_TYPE=demand_rq_arr(i).T_TYPE and T_FIID=demand_rq_arr(i).T_FIID;
-            forall i in values of indexes_insert
-                insert into ddlrq_dbt values demand_rq_arr(i);
-            
+            -- вставка. 
+
+
+
+
+            savepoint spa;
+            -- ошибка констрейнта IDX1 - платежи одного типа должны различаться полем T_NUM. Обычно его назначает триггер, но он был отключен, поскольку он ошибочный.
+            -- так что будем пытаться это поле назначать при поимке ошибки.
+            -- всего для каждого платежа можем сделать до 3 попыток. Предполагаем, что больше 3 одинаковых платежей под сделкой не бывает. 
+            while insert_count  < insert_count_limit
+            loop
+                deb('Попытка #1', insert_count);
+                rollback to spa;  -- лучше сделать это при входе, из последней итерации будем выходить с грязной записью.
+                begin
+                    forall i in values of indexes_insert SAVE EXCEPTIONS
+                        insert into ddlrq_dbt values demand_rq_arr(i);
+                    exit;  -- если не было ошибок, не продолжаем цикл
+                exception 
+                    when others  -- предполагаем, что ошибки связаны только с t_num  
+                    then
+                        deb('     ' || 'Ошибки (количество - #1) при вставке платежей. Перекодируем T_NUM', SQL%BULK_EXCEPTIONS.COUNT);
+                        -- цикл по ошибкам
+                        for i in 0..SQL%BULK_EXCEPTIONS.COUNT-1
+                        loop
+                            deb( '     ' || i || '> платеж #1 (сделка #2) в ddlrq_dbt. t_num = #3', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid, demand_rq_arr( indexes_insert(i)).t_num,  p_level => 5);
+                            demand_rq_arr( indexes_insert(i)).t_num := demand_rq_arr( indexes_insert(i)).t_num + 1;
+                        end loop;
+                end;
+                insert_count  := insert_count  + 1;
+            end loop;
+            -- выведем результат и отметим ошибочные записи, если остались
             deb('Выполнена вставка в DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_insert.count, SQL%BULK_EXCEPTIONS.COUNT); 
             for i in 1..SQL%BULK_EXCEPTIONS.COUNT
             loop
                 deb('Ошибка #3 вставки платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
-                demand_add_arr( indexes_insert(i) ).r_result := 2; -- флаг ошибки
+                demand_add_arr( indexes_insert(i) ).r_result := 2; -- флаг ошибки для replobj и dtxdemand
             end loop;
             
-            -- изменение
+            -- обработка записей на изменение
             forall i in values of indexes_update
                 update ddlrq_dbt set row=demand_rq_arr(i) where t_id=demand_rq_arr(i).t_id;
     
-            deb('Выполнено изменение в DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_insert.count, SQL%BULK_EXCEPTIONS.COUNT); 
+            deb('Выполнено изменение в DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_update.count, SQL%BULK_EXCEPTIONS.COUNT); 
+            -- цикл по возможным ошибкам
             for i in 1..SQL%BULK_EXCEPTIONS.COUNT
             loop
-                deb('Ошибка #3 изменения платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+                deb('Ошибка #3 изменения платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_update(i)).t_id, demand_rq_arr( indexes_update(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
                 demand_add_arr( indexes_update(i) ).r_result := 2;            
             end loop;
             
-            -- удаление
+            -- обработка записей на удаление
             forall i in values of indexes_delete
                 delete ddlrq_dbt where t_id=demand_rq_arr(i).t_id;
             
-            deb('Выполнена удаление из DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_insert.count, SQL%BULK_EXCEPTIONS.COUNT); 
+            deb('Выполнена удаление из DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_delete.count, SQL%BULK_EXCEPTIONS.COUNT); 
+            -- цикл по возможным ошибкам
             for i in 1..SQL%BULK_EXCEPTIONS.COUNT
             loop
-                deb('Ошибка #3 удаления платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+                deb('Ошибка #3 удаления платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_delete(i)).t_id, demand_rq_arr( indexes_delete(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
                 demand_add_arr( indexes_delete(i) ).r_result := 2;
             end loop;
 
             commit;
         
-            -- заполняем dtxreplobj_dbt. Только для успешно обработанных записей. Сначала на всякий случай убираем аналогичные записи - на случай перезагрузки.
+            -- заполняем dtxreplobj_dbt. Только для успешно обработанных записей. Сначала на всякий случай убираем аналогичные существующие записи.
+            deb('Выполняется вставка в DTXREPLOBJ');
             forall i in indices of demand_rq_arr
                 delete from dtxreplobj_dbt
                 where T_OBJECTTYPE=90 and T_OBJECTID=demand_add_arr(i).r_oldobjectid and T_SUBOBJNUM=demand_add_arr(i).r_subobjnum
                 and demand_add_arr(i).r_result <> 2;
+
+            for j in nvl(demand_rq_arr.first,0) .. nvl(demand_rq_arr.last, -1)
+            loop
+                deb('   > T_OBJECTID=#1, T_SUBOBJNUM=#2, T_DESTID=#3, RESULT='||demand_add_arr(j).r_result, demand_add_arr(j).r_oldobjectid, demand_add_arr(j).r_subobjnum, demand_rq_arr(j).t_id, p_level=>5);
+            end loop;
 
             forall i in indices of demand_rq_arr
                 insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
@@ -3396,9 +3497,11 @@ is
             demand_rq_arr.delete;
             demand_add_arr.delete;
 
-        end if; 
-        execute immediate 'alter trigger DDLRQ_DBT_TBI enable';
-        deb('Завершена процедура WRITE_DEMANDS');
+        end if;
+        deb('Завершена процедура WRITE_DEMANDS'); 
+--      exception when others then
+--        execute immediate 'alter trigger DDLRQ_DBT_TBI enable';
+--        deb('Завершена процедура WRITE_DEMANDS (ошибочно)');
     end write_demands;
     
 
@@ -3426,7 +3529,7 @@ is
         commit;
     end add_log;
 
-        -- запись в лог
+    -- запись в лог. Будущая реализация отложенной записи. Пишет в буфер, затем массово загоняет в таблицу. Только не для критичных ошибок.
     procedure add_log_deferred( p_code number, p_objtype number, p_id number, p_subnum number, p_text varchar2, p_date date)
     is
         pragma autonomous_transaction;
