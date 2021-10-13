@@ -1518,16 +1518,25 @@ is
                         end if;
                     end loop;
                     
-                    -- todo переделать на table()
+                    -- todo forall переделать на table()
+                    -- уже существующих подобных записей быть не должно. Это удаление мусора, если он есть.
                     forall i in indices of deal_sou_arr SAVE EXCEPTIONS
                         delete from dtxreplobj_dbt
-                        where T_OBJECTTYPE = 80 and T_OBJECTID = deal_sou_arr(i).t_dealid and deal_sou_add_arr(i).result < 2; -- только для успешно загруженных записей
-                        
+                        where T_OBJECTTYPE = 80 and T_OBJECTID = deal_sou_arr(i).t_dealid and deal_sou_add_arr(i).result < 2 and deal_sou_arr(i).t_action = 1; -- только для успешно загруженных вставок
+                    deb('Удаление мусора, обработано #1 записей', SQL%ROWCOUNT);                    
+    
                     forall i in indices of deal_sou_arr SAVE EXCEPTIONS
                         insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
                         select 80, deal_sou_arr(i).t_dealid, 0, deal_sou_add_arr(i).tgt_dealid, 0, 0 from dual
-                        where deal_sou_add_arr(i).result < 2; -- только для успешно загруженных записей
-                    deb('Обработано #1 записей', SQL%ROWCOUNT);
+                        where deal_sou_add_arr(i).result < 2 and deal_sou_arr(i).t_action = 1; -- только для успешно загруженных записей.
+                    deb('Вставка в dtxreplobj_dbt (для t_action=1), обработано #1 записей', SQL%ROWCOUNT);
+                    
+                    -- здесь проставляем признак удаленной записи в dtxreplobj
+                    forall i in indices of deal_sou_arr SAVE EXCEPTIONS
+                        update dtxreplobj_dbt set T_OBJSTATE=2 where T_OBJECTTYPE=80 and T_OBJECTID=deal_sou_arr(i).t_dealid and T_DESTID=deal_sou_add_arr(i).tgt_dealid
+                        and deal_sou_arr(i).t_action in (2,3);
+                    deb('Обновление dtxreplobj_dbt (для t_action 1,2), обработано #1 записей', SQL%ROWCOUNT);
+                    
                 end if;
                 deb('Завершена процедура  WRITE_DEALS_TO_REPLOBJ');    
             end write_deals_to_replobj;
@@ -2395,9 +2404,9 @@ is
                     tmp_dealids(j).T_BOFFICEKIND := deal_sou_add_arr(j).tgt_bofficekind;
                     deb('tmp_dealids(#1).T_DEALID  =  #2, tmp_dealids(#1).T_DEALID  =  #3', j, tmp_dealids(j).T_DEALID, tmp_dealids(j).T_BOFFICEKIND);
                 else
-                    tmp_dealcodes_in(j).INDEX_NUM   := j;  -- привязаться по коду сделки мы не можем.
+                    tmp_dealcodes_in(j).INDEX_NUM   := j;  -- привязаться по коду сделки мы не можем, придется тащить с собой этот индекс
                     tmp_dealcodes_in(j).T_DEALCODE  := main_tmp.t_code;
-                    deb('tmp_dealcodes_in(#1).INDEX_NUM  =  #2, tmp_dealcodes_in(#1).T_DEALCODE  =  #3', j, tmp_dealcodes_in(j).INDEX_NUM, tmp_dealcodes_in(j).T_DEALCODE);
+                    deb('tmp_dealcodes_in(#1).INDEX_NUM  =  #2, tmp_dealcodes_in(#1).T_DEALCODE  =  #3', j, tmp_dealcodes_in(j).INDEX_NUM, tmp_dealcodes_in(j).T_DEALCODE, p_level=>5);
                 end if;
             end loop;
             deb('Записей в tmp_dealids - #1, записей в tmp_dealcodes_in - #2', tmp_dealids.count, tmp_dealcodes_in.count);
@@ -2408,13 +2417,11 @@ is
             -- для операции вставки, сделки по кодам --- нас интересует только факт наличия сделок ---------------------------
             if tmp_dealcodes_in.count > 0
             then
-                select arr.INDEX_NUM, tk.t_dealcode bulk collect into tmp_dealcodes_out from ddl_tick_dbt tk, (select * from table(tmp_dealcodes_in)) arr where tk.t_dealcode=arr.T_DEALCODE and rownum < p_emergency_limit;
+                select arr.INDEX_NUM, tk.t_dealcode bulk collect into tmp_dealcodes_out from ddl_tick_dbt tk, (select INDEX_NUM, T_DEALCODE from table(tmp_dealcodes_in)) arr where tk.t_dealcode=arr.T_DEALCODE;
                 deb('Загружено сделок по кодам (DTXDEAL.T_CODE = DDL_TICK_DBT.T_DEALCODE) #1 записей из #2', tmp_dealcodes_out.count, tmp_dealcodes_in.count, p_level => 3);
                 -- переносим в дополнительную коллекцию 
-                deb('tmp_dealcodes_out.first = #1, tmp_dealcodes_out.last = #2', tmp_dealcodes_out.first, tmp_dealcodes_out.last);
                 for j in 1 .. nvl(tmp_dealcodes_out.last,0)
                 loop
-                    deb ( tmp_dealcodes_out(j).INDEX_NUM );
                     deal_sou_add_arr( tmp_dealcodes_out(j).INDEX_NUM ).is_matched_by_code := true;
                 end loop;
                 tmp_dealcodes_in.delete;
@@ -2438,6 +2445,7 @@ is
             end loop;
             -- временный буфер больше не нужен
             tmp_ddl_tick_dbt_arr_in.delete;
+            
             
             -- группы сделок
             select dealid, gr, RSB_SECUR.IsBuy(gr), RSB_SECUR.IsSale(gr), RSB_SECUR.IsLoan(gr), RSB_SECUR.IsRepo(gr) bulk collect into tmp_dealogroup_arr from
@@ -2472,8 +2480,8 @@ is
             for j in  1 .. nvl(tmp_ddl_leg_dbt_arr_in.last, 0)
             loop
                 dealid_tmp := tmp_ddl_leg_dbt_arr_in(j).t_dealid;
-                tmp_sou_id := deal_sou_back( dealid_tmp ); 
-                deal_sou_add_arr( tmp_sou_id ).DDL_LEG1_BUF := tmp_ddl_leg_dbt_arr_in(j);
+                tmp_sou_id := deal_sou_back( dealid_tmp ); -- получаем индекс во входной коллекции по dealid из целевой системы
+                deal_sou_add_arr( tmp_sou_id ).DDL_LEG1_BUF := tmp_ddl_leg_dbt_arr_in(j); -- сохраняем ногу в дополнительную коллекцию
             end loop;
             tmp_ddl_leg_dbt_arr_in.delete;
             
@@ -2487,8 +2495,8 @@ is
             for j in 1 .. nvl(tmp_ddl_leg_dbt_arr_in.last, 0)
             loop
                 dealid_tmp := tmp_ddl_leg_dbt_arr_in(j).t_dealid;
-                tmp_sou_id := deal_sou_back( dealid_tmp ); 
-                deal_sou_add_arr( tmp_sou_id ).DDL_LEG2_BUF := tmp_ddl_leg_dbt_arr_in(j);
+                tmp_sou_id := deal_sou_back( dealid_tmp );  -- получаем индекс во входной коллекции по dealid из целевой системы
+                deal_sou_add_arr( tmp_sou_id ).DDL_LEG2_BUF := tmp_ddl_leg_dbt_arr_in(j); -- сохраняем ногу в дополнительную коллекцию
             end loop;    
             tmp_ddl_leg_dbt_arr_in.delete;
             
@@ -2498,7 +2506,7 @@ is
             deb_empty('=');
             ---------------------------------------------------------------------------------------
 
-            deb('Цикл 3. Проверка наличия сделки в системе');
+            deb('Цикл 3. Проверка наличия сделок в системе');
             -- 694 стр.
             for i in deal_sou_arr.first .. deal_sou_arr.last
             loop
@@ -2514,6 +2522,7 @@ is
                 then
                     if add_tmp.is_matched_by_code 
                     then
+                        deb('Ошибка: сделка #1 уже существует в целевой системе. Сделка исключена из обработки', main_tmp.t_dealid);
                         pr_exclude(421, c_OBJTYPE_DEAL, main_tmp.t_dealid,  0, 'Ошибка: сделка уже существует в целевой системе', i, main_tmp.t_action);
                         continue;
                     end if;
@@ -2579,6 +2588,8 @@ is
                 
             end loop;
             -- завершено
+            
+            
             
             deb_empty('=');           
             -- заполняем структуры DDL_TICK и DDL_LEG. Пока на вставку будет оптимизация в виде FORALL, изменение и удаление будут идти по одной операции.
@@ -2843,7 +2854,7 @@ is
                 end if;
                 
                 --------------------------------------------------------------------------------------
-                -- заполняем структуры DDL_TICK и DDL_LEG. Пока на вставку будет оптимизация в виде FORALL, изменение и удаление будут идти по одной операции.
+                -- заполняем структуры DDL_TICK и DDL_LEG. Пока на вставку будет оптимизация в виде FORALL, а изменение и удаление будут идти по одной операции.
                 -- Предполагаю, что их будет несравнимо меньше. Если что, всегда можно дописать. 
                 deb('!  main_tmp.t_action для записи равен ' || main_tmp.t_action);
                 if main_tmp.t_action = 1
@@ -3155,6 +3166,7 @@ is
             for i in 1..demand_sou_arr.count
             loop
                 main_tmp    := demand_sou_arr(i);
+                error_found := false;
                 
                 demand_tmp.tgt_demandid :=  replobj_get(c_OBJTYPE_PAYMENT, main_tmp.t_demandid).dest_id;
                 demand_tmp.tgt_docid    :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;
@@ -3162,12 +3174,14 @@ is
                 if tmp_number = 1 
                 then 
                     error_found := true;
+                    deb('Ошибка: Т/О по сделке ' ||  main_tmp.t_dealid || ' находится в режиме ручного редактирования');
                     add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: Т/О по сделке ' ||  main_tmp.t_dealid || ' находится в режиме ручного редактирования', main_tmp.t_instancedate);
                 end if;
                 
                 if nvl(main_tmp.t_demandid,0) > 0 and demand_tmp.tgt_docid = -1 
                 then 
                     error_found := true;
+                    deb('Ошибка: отсутствует сделка #1 по платежу #2', main_tmp.t_dealid, main_tmp.t_demandid);
                     add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: отсутствует сделка по платежу ' ||  main_tmp.t_dealid, main_tmp.t_instancedate);
                 end if;
                 
@@ -3182,7 +3196,11 @@ is
                 end if;                
                 
                 -- собираем ID сделок для загрузки в буфер
-                tick_by_demand_arr( tick_by_demand_arr.count ) := demand_tmp.tgt_docid;                
+                if not error_found then
+                    tick_by_demand_arr( tick_by_demand_arr.count ) := demand_tmp.tgt_docid;
+                else
+                    demand_sou_arr(i).t_replstate := 2; -- ошибка в параметрах!
+                end if;                
                 
             end loop; -- конец цикла 2
 
@@ -3200,14 +3218,18 @@ is
             tick_by_demand_arr.delete;
             deb('Создан буфер сделок, #1 записей', ddl_tick_dbt_arr.count);
             
+            
             deb('Цикл 3 - назначение валюты платежа (для бумаг) и передача платажа в add_demand');
             for i in 1..demand_sou_arr.count
             loop
                 main_tmp    := demand_sou_arr(i);
+                
+                if main_tmp.t_replstate = 2 
+                then continue;
+                end if;
                                 
                 demand_tmp.tgt_demandid :=  replobj_get(c_OBJTYPE_PAYMENT, main_tmp.t_demandid).dest_id;
                 demand_tmp.tgt_docid    :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;                
-                
                 deal_tmp    := ddl_tick_dbt_arr( demand_tmp.tgt_docid );
                 
                 if main_tmp.t_fikind=10
