@@ -150,11 +150,11 @@ is
         deb('Выполнена вставка в DOBJATCOR_DBT, вставлено #1 записей, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT); 
         for i in 1..SQL%BULK_EXCEPTIONS.COUNT
         loop
-            deb('Ошибка #2 добавления объекту #1 категории #3', note_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_objtype || ' - ' || note_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_struniid, SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  note_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_kind  ,p_level => 5);
+            deb('Ошибка #2 добавления объекту #1 категории #3', categ_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_objtype || ' - ' || categ_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_struniid, SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  note_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_kind  ,p_level => 5);
         end loop;
         
         commit;
-        note_arr.delete;
+        categ_arr.delete;
         deb('Завершена процедура WRITE_CATEGS');
     end write_categs;        
         
@@ -198,7 +198,7 @@ is
         l_SetCatID number;
         l_SetCatSTR varchar2(50);
     begin
-        deb('Запущена процедура ADD_ALL_NOTES_CATEGS');
+        deb('Запущена процедура ADD_ALL_NOTES_CATEGS', p_level=>5);
     
         if add_tmp.tgt_dealid is null
         then
@@ -435,7 +435,7 @@ is
             add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 105, main_tmp.T_COUNTRY, main_tmp.t_instancedate);
         end if;      
         
-        deb('Завершена процедура ADD_ALL_NOTES_CATEGS');            
+        deb('Завершена процедура ADD_ALL_NOTES_CATEGS', p_level=>5);            
              
     end add_all_notes_categs;
     
@@ -472,6 +472,7 @@ is
         -- и мы не хотим, чтобы следующая порция начитанных из источника данный стала тащить старый DEST_ID отсюда - обновим во втором IF
         -- Данные из этих массивов не стираются на новых порциях из источника, только добавляются новые. Возможно, потом это изменю.
         v_searchstr := to_char(p_objtype) || '#' || to_char(p_obj_id) || '#' || to_char(p_obj_sub_id);
+        deb( '>Процедура replobj_add, добавлен объект: objtype = #1, id = #2, sub_id = #3', p_objtype, p_obj_id, p_obj_sub_id, p_level=>4);
         if not replobj_rec_inx_arr.exists(v_searchstr) then
             mas_idx := nvl(replobj_rec_arr.last,-1)+1;  -- count нельзя, '-1'й элемент потом добавится
             replobj_rec_arr(mas_idx).obj_type   := p_objtype;
@@ -527,12 +528,12 @@ is
         deb( 'Запущена процедура  replobj_load');
         deb( 'Количество записей в буфере replobj: ' ||load_rss.replobj_rec_arr.count() );
         
-        if g_debug_level_limit > 3 then
+        if g_debug_level_current > 3 then
             deb( '>  Количество записей в буфере replobj ПЕРЕД загрузкой: ' ||load_rss.replobj_rec_arr.count() );
             v_counter := load_rss.replobj_rec_arr.first; 
             while (v_counter is not null)
             loop
-                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || rpad(load_rss.replobj_rec_arr(v_counter).obj_id, 20, ' ') || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
+                deb( '> Номер - тип - object_id - sub_obj_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || rpad(load_rss.replobj_rec_arr(v_counter).obj_id, 20, ' ') || '\t\t' || rpad(load_rss.replobj_rec_arr(v_counter).obj_sub_id, 20, ' ') || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id, p_level=>4);
                 v_counter := replobj_rec_arr.next(v_counter);
             end loop;
             deb( '>  Количество записей в поисковом индексе replobj ПЕРЕД загрузкой: ' ||load_rss.replobj_rec_inx_arr.count() );
@@ -546,7 +547,7 @@ is
         
         
         --deb( 'Количество записей в буфере replobj_tmp_arr: ' ||load_rss.replobj_tmp_arr.count() );
-        SELECT ro.* BULK COLLECT INTO replobj_tmp_arr
+        SELECT /*+ use_hash(ro inp) */ ro.* BULK COLLECT INTO replobj_tmp_arr
         FROM dtxreplobj_dbt ro, (select * from table(replobj_rec_arr)) inp where t_objecttype = inp.obj_type and t_objectid = inp.obj_id and (ro.t_subobjnum = obj_sub_id or obj_sub_id = 0) and t_objstate != 2 and inp.dest_id=-1 and inp.obj_id>0;
 
         deb( 'Загружено #1 записей', SQL%ROWCOUNT);
@@ -566,7 +567,7 @@ is
                 v_search_str := to_char(replobj_tmp_arr(i).t_objecttype) || '#' || to_char(replobj_tmp_arr(i).t_objectid) || '#' || '0';
             end if; 
             v_search_idx := replobj_rec_inx_arr(v_search_str);  -- нашли индекс записи в основном массиве
-            deb( '>  Индекс_в_массиве - Поисковая_строка - Значение_t_destid: \t\t' ||v_search_idx || '\t\t' || rpad(v_search_str, 20, ' ') || '\t\t' || replobj_tmp_arr(i).T_DESTID);
+            deb( '>  Индекс_в_массиве - Поисковая_строка - Значение_t_destid: \t\t' ||v_search_idx || '\t\t' || rpad(v_search_str, 20, ' ') || '\t\t' || replobj_tmp_arr(i).T_DESTID, p_level=>4);
             -- адресуем элемент
             replobj_rec_arr(v_search_idx).dest_id := replobj_tmp_arr(i).T_DESTID;
             replobj_rec_arr(v_search_idx).state := replobj_tmp_arr(i).t_objstate;
@@ -587,19 +588,19 @@ is
         replobj_rec_arr(-1).dest_id     := -1;
         replobj_rec_arr(-1).state       := 0;
         
-        if g_debug_level_limit > 3 then
+        if g_debug_level_current > 3 then
             deb( '>  Количество записей в буфере replobj ПОСЛЕ загрузки: ' ||load_rss.replobj_rec_arr.count() );
             v_counter := load_rss.replobj_rec_arr.first; 
             while (v_counter is not null)
             loop
-                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || rpad(load_rss.replobj_rec_arr(v_counter).obj_id, 20, ' ') || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id);
+                deb( '> Номер - тип - object_id - destid:      ' || v_counter || '\t\t' || load_rss.replobj_rec_arr(v_counter).obj_type || '\t\t' || rpad(load_rss.replobj_rec_arr(v_counter).obj_id, 20, ' ') || '\t\t' || load_rss.replobj_rec_arr(v_counter).dest_id, p_level=>4);
                 v_counter := replobj_rec_arr.next(v_counter);
             end loop;
             deb( '>  Количество записей в поисковом индексе replobj ПОСЛЕ загрузки: ' ||load_rss.replobj_rec_inx_arr.count() );
             v_counter_str := load_rss.replobj_rec_inx_arr.first; 
             while (v_counter_str is not null)
             loop
-                deb( '> Индекс - значение:      ' || v_counter_str || '\t\t' || load_rss.replobj_rec_inx_arr(v_counter_str));
+                deb( '> Индекс - значение:      ' || v_counter_str || '\t\t' || load_rss.replobj_rec_inx_arr(v_counter_str), p_level=>4);
                 v_counter_str := replobj_rec_inx_arr.next(v_counter_str);
             end loop;
         end if; 
@@ -623,7 +624,7 @@ is
     begin
         -- для производительности
         -- лимит важности в спецификации пакета. Если переданное значение выше, сообщение не записывается.
-        if not (g_debug_output or g_debug_table) or (p_level > g_debug_level_limit)
+        if not (g_debug_output or g_debug_table) or (p_level > g_debug_level_current)
         then return; 
         end if;
         
@@ -694,7 +695,7 @@ is
         -- Для dratedef_dbt записи массово будут только апдейтиться. Если что-то не подпадает под операцию апдейта, будет рассматриваться отдельно, это редкий случай.
         -- Для dratehist_dbt создается два буфера - на уставку и удаление. Апдейт моделируется операциями вставки/удаления, поскольку редкий.
         -- В самом обычном режиме обновляется последнее значение курса. Проводится вставка в ratehist и апдейт dratedef_dbt
-        cursor m_cur(pp_date date, pp_action number) is select * from DTXCOURSE_DBT where t_instancedate between pp_date and pp_date+1 and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action, t_basefiid, t_marketsectorid, t_type;
+        cursor m_cur(pp_date date, pp_action number) is select * from DTXCOURSE_DBT where t_instancedate >= pp_date and t_instancedate < (pp_date+1) and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action, t_basefiid, t_marketsectorid, t_type;
 
         type index_collection_type is table of number index by varchar2(100);  -- тип индексной коллекции, используется для поиска связей сущностей.
 
@@ -770,7 +771,7 @@ is
         procedure pr_include( p_counter number)
         is
         begin
-            deb('Запись обработана успешно! Процедура pr_include для записи номер #1', p_counter, p_level => 3);
+            deb('Запись обработана успешно! Процедура pr_include для записи номер #1', p_counter, p_level => 5);
             
             rate_sou_add_arr(p_counter).result := 1;
 
@@ -1365,7 +1366,7 @@ is
     is
             
        
-            cursor m_cur(pp_date date, pp_action number) is select * from DTXDEAL_DBT where t_instancedate between pp_date and pp_date+1 and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action;
+            cursor m_cur(pp_date date, pp_action number) is select * from DTXDEAL_DBT where t_instancedate >= pp_date and t_instancedate < (pp_date+1) and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action;
 
             type index_collection_type is table of number index by varchar2(100);  -- тип индексной коллекции, используется для поиска связей сущностей.
         
@@ -1459,31 +1460,90 @@ is
             tmp_dealcodes_back  tmp_varchar_back_arr_type;            
             
             
+            -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
+            procedure pr_exclude(p_code number, p_objtype number, p_id number, p_subnum number := 0, p_text varchar2, p_counter number, p_action number, p_silent boolean := false)
+            is
+                text_corr varchar2(1000);
+                v_row DTXDEAL_DBT%ROWTYPE;
+            begin
+                deb('Запущена процедура  PR_EXCLUDE',p_level=>5);
+                v_row := deal_sou_arr(p_counter);
+                text_corr := replace(p_text, '%act%',  (case p_action when 1 then 'Вставка' when 2 then 'изменение' when 3 then 'удаление' end) );
+                /*
+                text_corr := replace(text_corr, '%fiid%', v_row.t_fiid);
+                text_corr := replace(text_corr, '%basefiid%', v_row.t_basefiid);
+                text_corr := replace(text_corr, '%type%', v_row.t_type);
+                text_corr := replace(text_corr, '%date%', to_char(v_row.t_ratedate,'dd.mm.yyyy'));
+                */
+                deb(text_corr || ', операция #1', p_id, p_level=>5);
+                -- потом заменить на add_log_deferred
+                if not p_silent
+                then
+                    add_log( p_code, p_objtype, p_id, p_subnum, text_corr, p_date);
+                end if;
+    
+                -- исключаем элемент
+                deal_sou_add_arr(p_counter).result := 2;
+                -- уменьшаем счетчик сделок
+                good_deals_count := good_deals_count - 1;
+                deb('Завершена процедура  PR_EXCLUDE', p_level=>5);
+            end pr_exclude;
+            
+            -- запись обработана успешно.
+            procedure pr_include( p_counter number)
+            is
+            begin
+                deb('Запись обработана успешно! Процедура pr_include для записи номер #1', p_counter, p_level => 5);
+                
+                deal_sou_add_arr(p_counter).result := 1;
+    
+            end pr_include;            
+            
+            
             -- сохраняем все добавленные сделки
                 -- все примечания к объектам из буфера записываются в базу. Буфер очищается.
             procedure write_deals_to_ddltick
             is
+                clop number;
+                sou_dealid_tmp  number; -- dealid записи в исходной системе
+                sou_index_tmp   number; -- индекс записи в исходной коллекции deal_sou_arr
+                tgt_dealid_tmp  number; -- dealid записи в целевой системе
             begin
                 deb('Запущена процедура WRITE_DEALS_TO_DDLTICK');
                 if ddl_tick_dbt_arr_out.count = 0 then
                     deb('Нет записей для обработки');
                 else
                     deb('Вставка тикетов сделок DDL_TICK_DBT, в коллекции #1 записей', ddl_tick_dbt_arr_out.count);
-                    forall i in indices of ddl_tick_dbt_arr_out SAVE EXCEPTIONS
-                            insert into ddl_tick_dbt
-                            values ddl_tick_dbt_arr_out(i);
+                    begin
+                        forall i in indices of ddl_tick_dbt_arr_out SAVE EXCEPTIONS
+                                insert into ddl_tick_dbt
+                                values ddl_tick_dbt_arr_out(i);
+                    exception when others
+                    then
+                        deb('Ошибка вставки сделки');
+                        deb('count = ' || SQL%BULK_EXCEPTIONS.COUNT);
+                        deb('Обработано = ' || SQL%ROWCOUNT);
+
+                        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+                        loop
+                            clop := SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1;
+                            tgt_dealid_tmp := ddl_tick_dbt_arr_out(i).t_dealid;
+                            sou_index_tmp  := deal_sou_back( tgt_dealid_tmp );
+                            sou_dealid_tmp := deal_sou_arr( sou_index_tmp ).t_dealid;
+                            --dbms_output.put_line('Ошибка вставки сделки (ddl_tick_dbt) c dealcode = ' || ddl_tick_dbt_arr_out( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).t_dealcode ||   ':  ' || SQLERRM( -1 * SQL%BULK_EXCEPTIONS(i).ERROR_CODE));
+                            deb('Ошибка вставки сделки (ddl_tick_dbt) c dealcode = ' || ddl_tick_dbt_arr_out( clop ).t_dealcode ||   ':  ' || SQLERRM( -SQL%BULK_EXCEPTIONS(i).ERROR_CODE));
+                            pr_exclude(568, c_OBJTYPE_DEAL, sou_index_tmp, 0, 'Ошибка при вставке сделки с dealcode : ' || ddl_tick_dbt_arr_out( clop ).t_dealcode || ':   ' || SQLERRM( -SQL%BULK_EXCEPTIONS(i).ERROR_CODE), i, 1);
+                        end loop;
+                    end;
                     
                     deb('Выполнена вставка в DDL_TICK_DBT, добавлено - #1, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT); 
-                    for i in 1..SQL%BULK_EXCEPTIONS.COUNT
-                    loop
-                        deb('Ошибка вставки сделки (ddl_tick_dbt) #2:  #1 ', SQL%BULK_EXCEPTIONS(i).ERROR_CODE,   ddl_tick_dbt_arr_out( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).t_dealid, p_level => 5);
-                    end loop;
+                    commit;
                     
                     deb('Вставка ценовых условий сделок DDL_LEG_DBT, в коллекции #1 записей', ddl_leg_dbt_arr_out.count);
                     forall i in indices of ddl_leg_dbt_arr_out SAVE EXCEPTIONS
                             insert into ddl_leg_dbt
                             values ddl_leg_dbt_arr_out(i);
-                    
+                   
                     deb('Выполнена вставка в DDL_LEG_DBT, добавлено - #1, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT);  
                     for i in 1..SQL%BULK_EXCEPTIONS.COUNT
                     loop
@@ -1568,74 +1628,65 @@ is
                 else
                     deb('Количество записей в буфере dspground_arr - #1', dspground_arr.count);
                     
-                    forall i in indices of dspground_arr save exceptions
-                        insert into dspground_dbt( t_kind, t_DocLog, t_Direction, t_Receptionist, t_References, t_AltXld, t_SignedDate, t_Party)
-                        values (26, 513, 2, g_oper, 1, dspground_arr(i).r_AltXld, dspground_arr(i).r_SignedDate, dspground_arr(i).r_party);
-    
-                    deb('Выполнена вставка в DSPGROUND_DBT, вставлено #1 записей, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT); 
-                    for i in 1..SQL%BULK_EXCEPTIONS.COUNT
-                    loop
-                        deb('Ошибка #2 добавления в DSPGROUND_DBT, объект #1', dspground_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_AltXld, SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
-                    end loop;
+                    begin
+                        forall i in indices of dspground_arr save exceptions
+                            insert into dspground_dbt( t_kind, t_DocLog, t_Direction, t_Receptionist, t_References, t_AltXld, t_SignedDate, t_Party)
+                            values (26, 513, 2, g_oper, 1, dspground_arr(i).r_AltXld, dspground_arr(i).r_SignedDate, dspground_arr(i).r_party);
+                    exception when others then
+                        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+                        loop
+                            deb('Ошибка #2 добавления в DSPGROUND_DBT, объект #1', dspground_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).r_AltXld, SQLERRM(-SQL%BULK_EXCEPTIONS(i).ERROR_CODE),  p_level => 5);
+                        end loop;
+                    end;
+                    deb('Выполнена вставка в DSPGROUND_DBT, вставлено #1 записей, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT);
                 
                     -- удаляем возможные привязки к документам
-                    forall i in indices of dspground_arr save exceptions
-                        delete dspgrdoc_dbt where t_SourceDocKind=dspground_arr(i).r_BofficeKind and t_SourceDocID=dspground_arr(i).r_dealid and t_SPGroundID=dspground_arr(i).r_spgroundid;
-                        
+                    begin
+                        forall i in indices of dspground_arr save exceptions
+                            delete dspgrdoc_dbt where t_SourceDocKind=dspground_arr(i).r_BofficeKind and t_SourceDocID=dspground_arr(i).r_dealid and t_SPGroundID=dspground_arr(i).r_spgroundid;
+                    exception when others then
+                        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+                        loop
+                            deb('Ошибка #2 удаления из DSPGRDOC_DBT, объект #1', dspground_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).r_AltXld, SQLERRM(-SQL%BULK_EXCEPTIONS(i).ERROR_CODE),  p_level => 5);
+                        end loop;
+                    end;                    
+                    deb('Удалены текущие привязки из DSPGRDOC_DBT');
+                    
                     -- и добавляем новые
-                    forall i in indices of dspground_arr save exceptions
-                        insert into dspgrdoc_dbt( t_SourceDocKind, t_SourceDocID, t_SPGroundID)
-                        values (dspground_arr(i).r_BofficeKind, dspground_arr(i).r_dealid, dspground_arr(i).r_spgroundid);
-    
+                    begin
+                        forall i in indices of dspground_arr save exceptions
+                            insert into dspgrdoc_dbt( t_SourceDocKind, t_SourceDocID, t_SPGroundID)
+                            values (dspground_arr(i).r_BofficeKind, dspground_arr(i).r_dealid, dspground_arr(i).r_spgroundid);
+                    exception when others then
+                        deb('!!!');
+                        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+                        loop
+                            deb('!!!');
+                            deb(dspground_arr.count || '-----' || dspground_arr.first);
+                            null;
+                            dbms_output.put_line(nvl( dspground_arr(0).r_BofficeKind, -1)  );
+                            dbms_output.put_line(nvl(dspground_arr(0).r_dealid,-1));
+                            dbms_output.put_line(nvl(dspground_arr(0).r_spgroundid, -1));
+                            if i>10 then 
+                                exit;
+                            end if;
+                            --deb( 'SQL%BULK_EXCEPTIONS.COUNT = ' || SQL%BULK_EXCEPTIONS.COUNT);
+                            --deb( 'SQL%BULK_EXCEPTIONS(i).ERROR_INDEX = ' || SQL%BULK_EXCEPTIONS(i).ERROR_INDEX);
+                            --deb( '-SQL%BULK_EXCEPTIONS(i).ERROR_CODE = ' || -SQL%BULK_EXCEPTIONS(i).ERROR_CODE);
+                            --deb('Ошибка #2 вставки в DSPGRDOC_DBT, объект #1', dspground_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).r_AltXld, SQLERRM(-SQL%BULK_EXCEPTIONS(i).ERROR_CODE),  p_level => 5);
+                        end loop;
+                    end;        
                     deb('Выполнена вставка в DSPGRDOC_DBT, вставлено #1 записей, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT); 
-                    for i in 1..SQL%BULK_EXCEPTIONS.COUNT
-                    loop
-                        deb('Ошибка #2 вставки в DSPGRDOC_DBT, объект #1', dspground_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).r_dealid, SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
-                    end loop;
+                    commit;
+                    
+                    dspground_arr.delete;
                 
                 end if;
                 deb('Завершена процедура  WRITE_GROUNDS');
             end write_grounds;
             
             
-            -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
-            procedure pr_exclude(p_code number, p_objtype number, p_id number, p_subnum number := 0, p_text varchar2, p_counter number, p_action number, p_silent boolean := false)
-            is
-                text_corr varchar2(1000);
-                v_row DTXDEAL_DBT%ROWTYPE;
-            begin
-                deb('Запущена процедура  PR_EXCLUDE');
-                v_row := deal_sou_arr(p_counter);
-                text_corr := replace(p_text, '%act%',  (case p_action when 1 then 'Вставка' when 2 then 'изменение' when 3 then 'удаление' end) );
-                /*
-                text_corr := replace(text_corr, '%fiid%', v_row.t_fiid);
-                text_corr := replace(text_corr, '%basefiid%', v_row.t_basefiid);
-                text_corr := replace(text_corr, '%type%', v_row.t_type);
-                text_corr := replace(text_corr, '%date%', to_char(v_row.t_ratedate,'dd.mm.yyyy'));
-                */
-                deb(text_corr || ', операция #1', p_id, p_level=>5);
-                -- потом заменить на add_log_deferred
-                if not p_silent
-                then
-                    add_log( p_code, p_objtype, p_id, p_subnum, text_corr, p_date);
-                end if;
-    
-                -- исключаем элемент
-                deal_sou_add_arr(p_counter).result := 2;
-                -- уменьшаем счетчик сделок
-                good_deals_count := good_deals_count - 1;
-                deb('Завершена процедура  PR_EXCLUDE');
-            end pr_exclude;
-            
-            -- запись обработана успешно.
-            procedure pr_include( p_counter number)
-            is
-            begin
-                deb('Запись обработана успешно! Процедура pr_include для записи номер #1', p_counter, p_level => 3);
-                
-                deal_sou_add_arr(p_counter).result := 1;
-    
-            end pr_include;
+
 
 
             -- Процедура очистки данных.
@@ -1648,7 +1699,7 @@ is
                 l_partialid number;
                 exp_wrong_date  exception;
             begin
-                        deb('Запущена процедура  DEAL_CLEANING');
+                        deb('Запущена процедура  DEAL_CLEANING', p_level=>5);
                         l_main_tmp := deal_sou_arr(i); 
                         l_add_tmp  := null;
                         
@@ -1685,8 +1736,10 @@ is
                                 case l_main_tmp.T_KIND
                                 when 30 then
                                             l_add_tmp.tgt_existback := true;
+                                            l_add_tmp.tgt_bofficekind := c_DL_SECURITYDOC;
                                 when 40 then
                                             l_add_tmp.tgt_existback := true;
+                                            l_add_tmp.tgt_bofficekind := c_DL_SECURITYDOC;
                                 when 70 then
                                             l_add_tmp.tgt_bofficekind := c_DL_RETIREMENT;
                                             l_add_tmp.tgt_objtype     := 117;
@@ -2062,11 +2115,11 @@ is
                         deal_sou_arr(i) := l_main_tmp;
                         deal_sou_add_arr(i) := l_add_tmp;
 
-                    deb('Завершена процедура DEAL_CLEANING (успешно)');
+                    deb('Завершена процедура DEAL_CLEANING (успешно)', p_level=>5);
                     return true;
             exception when exp_wrong_date
                 then
-                    deb('Завершена процедура DEAL_CLEANING (по исключению)');
+                    deb('Завершена процедура DEAL_CLEANING (по исключению)', p_level=>5);
                     return false;
             end deal_cleaning;
             
@@ -2281,7 +2334,7 @@ is
         deb_empty('=');
 
         deb('Запущена процедура LOAD_DEALS за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
-        
+        g_debug_level_current := -1;
         open m_cur(p_date, p_action);
         loop
 
@@ -2289,7 +2342,18 @@ is
             fetch m_cur bulk collect into deal_sou_arr limit g_limit;
             exit when deal_sou_arr.count=0;
             good_deals_count := m_cur%rowcount;
+            -- устанавливаем диапазон регистрируемых записей для лога. Если в выборке < 20 записей, считаем ее отладочной и выводим полную информацию.
+            if g_debug_level_current = -1 
+            then
+                if good_deals_count < 20
+                then
+                    g_debug_level_current := 10;
+                else
+                    g_debug_level_current := g_debug_level_limit;
+                end if;
+            end if;
             deb('Загружены данные из DTXDEAL_DBT, #1 строк', m_cur%rowcount);
+            deb('Установлен уровень логирования: #1', g_debug_level_current);
             
             -- регистрируем все сущности для загрузки из REPLOBJ
             deb_empty('=');
@@ -2500,8 +2564,6 @@ is
             end loop;    
             tmp_ddl_leg_dbt_arr_in.delete;
             
-            deal_sou_back.delete; -- тоже больше не нужен
-                        
             deb('Запись в буфер данных из DDL_TICK и DDL_LEG завершена. Все буферы загружены. Вспомогательные массивы очищены.');                 
             deb_empty('=');
             ---------------------------------------------------------------------------------------
@@ -2840,13 +2902,13 @@ is
                         then
                             if Round(leg2_tmp.t_cost) <> Round(leg2_tmp.T_Price * curnom_tmp/100 * main_tmp.T_AMOUNT)
                             then
-                                deb('Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) в валюте на количество бумаг (T_AMOUNT)');
+                                deb('Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) в валюте на количество бумаг (T_AMOUNT)', p_level=>5);
                                 add_log( 500,c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) в валюте на количество бумаг (T_AMOUNT)', main_tmp.t_instancedate);
                             end if;
                         else
                             if Round(leg2_tmp.t_cost) <> Round(leg2_tmp.T_Price * main_tmp.T_AMOUNT)
                             then
-                                deb('Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) на количество бумаг (T_AMOUNT)');
+                                deb('Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) на количество бумаг (T_AMOUNT)', p_level=>5);
                                 add_log( 500,c_OBJTYPE_DEAL, main_tmp.t_dealid, 0, 'Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) на количество бумаг (T_AMOUNT)', main_tmp.t_instancedate);
                             end if;
                     end if;
@@ -2856,11 +2918,10 @@ is
                 --------------------------------------------------------------------------------------
                 -- заполняем структуры DDL_TICK и DDL_LEG. Пока на вставку будет оптимизация в виде FORALL, а изменение и удаление будут идти по одной операции.
                 -- Предполагаю, что их будет несравнимо меньше. Если что, всегда можно дописать. 
-                deb('!  main_tmp.t_action для записи равен ' || main_tmp.t_action);
                 if main_tmp.t_action = 1
                 then
-                    deb('Запись в буферы DDL_TICK_DBT и DDL_LEG_DBT записей на вставку');
-                    tick_tmp.t_dealid := ddl_tick_dbt_seq.nextval;
+                    deb('Запись в буферы DDL_TICK_DBT и DDL_LEG_DBT записей на вставку', p_level=>5);
+                    tick_tmp.t_dealid := ddl_tick_dbt_seq.nextval; -- новый dealid
                     leg1_tmp.t_dealid := tick_tmp.t_dealid;
 
                     ddl_tick_dbt_arr_out( ddl_tick_dbt_arr_out.count ) := tick_tmp; 
@@ -2871,7 +2932,7 @@ is
                         ddl_leg2_dbt_arr_out( ddl_leg_dbt_arr_out.count ) := leg2_tmp;
                     end if;
                    
-                    deb('Запись DEALID = #1 сохранена', tick_tmp.t_dealid);                
+                    deb('Запись DEALID = #1 сохранена', tick_tmp.t_dealid, p_level=>5);                
                 
                     -- добавим запись в буфер таблицы договоров
                     if main_tmp.T_CONTRNUM <> 0 and main_tmp.T_CONTRDATE <> date'0001-01-01'
@@ -2884,7 +2945,7 @@ is
                         dspground_tmp.r_BofficeKind := tick_tmp.T_BOFFICEKIND;
                         
                         dspground_arr( dspground_arr.count ) := dspground_tmp;
-                        deb('Запись SPGROUNDID = #1 сохранена в буфер dspground_arr', dspground_tmp.r_SPgroundID);
+                        deb('Запись SPGROUNDID = #1 сохранена в буфер dspground_arr', dspground_tmp.r_SPgroundID, p_level=>5);
                     end if;
                 
                 elsif main_tmp.t_action = 2
@@ -2990,9 +3051,9 @@ is
                     deb('Ошибка! tick_tmp.t_dealid для записи равен NULL (запись #1, t_action = #2)', main_tmp.t_dealid, main_tmp.t_action);
                     return;
                 end if;
-                
                 pr_include(i);
                 deal_sou_add_arr(i).TGT_DEALID := tick_tmp.t_dealid;
+                deal_sou_back(tick_tmp.t_dealid) := i; -- может пригодиться, если будет ошибка при вставке записей в TICK
                 add_tmp.TGT_DEALID := tick_tmp.t_dealid;
                 
                 -- добавление примечаний и категорий объектов по сделке в буфер
@@ -3023,13 +3084,16 @@ is
             write_notes;
             write_categs;           
             -- вставляем платежи
-            write_demands;
+            write_demands( p_action );
             -- сохраняем договоры по сделкам и привязку к сделкам
             write_grounds;
         end loop; -- основной цикл, по порциям данных из DTXDEAL_DBT
         
+        deal_sou_back.delete;
+        
         deb('Запись новых типов субъектов в таблицу dpartyown_dbt');
         upload_subject_types;
+        g_debug_level_current := g_debug_level_limit;
         deb('Завершена процедура LOAD_DEALS');
     end load_deals; 
 
@@ -3037,7 +3101,7 @@ is
     -- процедура загрузки платежей
     procedure load_demands(p_date date, p_action number)
     is
-        cursor m_cur(pp_date date, pp_action number) is select * from DTXDEMAND_DBT where t_instancedate between pp_date and pp_date+1 and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action; 
+        cursor m_cur(pp_date date, pp_action number) is select * from DTXDEMAND_DBT where t_instancedate >= pp_date and t_instancedate < (pp_date+1) and t_replstate=0 and t_action = pp_action order by t_instancedate, t_action; 
         
         -- коллекция t_dealid, индексация произвольная. Сюда собираем id сделок для загрузки данных по ним
         tick_by_demand_arr  tmp_arr_type;
@@ -3062,7 +3126,7 @@ is
                 text_corr varchar2(1000);
                 v_row DTXDEMAND_DBT%ROWTYPE;
             begin
-                deb('Запущена процедура  PR_EXCLUDE');
+                deb('Запущена процедура  PR_EXCLUDE', p_level=>5);
                 v_row := demand_sou_arr(p_counter);
                 text_corr := replace(p_text, '%act%',  (case p_action when 1 then 'Вставка' when 2 then 'изменение' when 3 then 'удаление' end) );
 
@@ -3074,7 +3138,7 @@ is
     
                 -- исключаем элемент
                 demand_sou_arr.delete(p_counter);
-                deb('Завершена процедура  PR_EXCLUDE');
+                deb('Завершена процедура  PR_EXCLUDE', p_level=>5);
             end pr_exclude;
         
 --================================================================================================================
@@ -3086,13 +3150,28 @@ is
 
         deb('Запущена процедура  LOAD_DEMANDS за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
         
+        g_debug_level_current := -1;
+        
         open m_cur(p_date, p_action);
         loop
             -- загрузка порции данных
-            fetch m_cur bulk collect into demand_sou_arr limit g_limit;
+            fetch m_cur bulk collect into demand_sou_arr limit g_limit_demand;
             exit when demand_sou_arr.count=0;
             deb('Загружены данные из DTXDEMAND_DBT, #1 строк', m_cur%rowcount);
-
+            
+            -- устанавливаем диапазон регистрируемых записей для лога. Если в выборке < 20 записей, считаем ее отладочной и выводим полную информацию.
+            if g_debug_level_current = -1 
+            then
+                if m_cur%rowcount < 20
+                then
+                    g_debug_level_current := 10;
+                else
+                    g_debug_level_current := g_debug_level_limit;
+                end if;
+                deb('Установлен уровень логирования: #1', g_debug_level_current);
+            end if;
+            
+            
             -- регистрируем все сущности для загрузки из REPLOBJ
             deb_empty('=');
             deb('Цикл 1 - очистка данных и регистрация кодов в буфере REPLOBJ');
@@ -3100,7 +3179,7 @@ is
             loop
                 main_tmp    := demand_sou_arr(i);
                 
-                if main_tmp.t_action < 3
+                if p_action < 3
                 then
                     tmp_string := null;
                     if      nvl(main_tmp.t_dealid,0) = 0
@@ -3129,25 +3208,29 @@ is
                         tmp_string := 'Не задано t_state - статус платежа'; 
                     elsif   nvl(main_tmp.t_paycurrencyid,0) = 0 and main_tmp.t_fikind=10 
                     then
-                        tmp_string := 'Не задано t_paycurrencyid - статус платежа';
+                        tmp_string := 'Не задано t_paycurrencyid - валюта платежа';
                     end if;
                     
                     if tmp_string is not null
                     then
-                        pr_exclude(207, main_tmp.t_demandid, tmp_string, i, main_tmp.t_action);
-                        deb('Ошибка. Платеж ' || main_tmp.t_demandid || '.  ' || tmp_string);
+                        pr_exclude(207, main_tmp.t_demandid, tmp_string, i, p_action);
+                        deb('Ошибка. Платеж ' || main_tmp.t_demandid || '.  ' || tmp_string, p_level=>5);
                         continue;
                     end if;        
 
                     -- собираем уникальные fiid
-                    replobj_add( c_OBJTYPE_MONEY,   main_tmp.t_paycurrencyid, 0 );
+                    if main_tmp.t_fikind=10
+                    then 
+                        replobj_add( c_OBJTYPE_MONEY,   main_tmp.t_paycurrencyid, 0 );
+                    end if;
                     -- сделка
-                    replobj_add( c_OBJTYPE_DEAL, main_tmp.T_DEALID);
+                    replobj_add( c_OBJTYPE_DEAL,    main_tmp.T_DEALID);
 
                 end if;    
 
                 -- собственно, платеж
                 if p_action > 1 then
+                    deb('!!!!!!! ' || main_tmp.T_DEMANDID);
                     replobj_add( c_OBJTYPE_PAYMENT, main_tmp.T_DEMANDID);
                 end if;
                 
@@ -3174,14 +3257,14 @@ is
                 if tmp_number = 1 
                 then 
                     error_found := true;
-                    deb('Ошибка: Т/О по сделке ' ||  main_tmp.t_dealid || ' находится в режиме ручного редактирования');
+                    deb('Ошибка: Т/О по сделке ' ||  main_tmp.t_dealid || ' находится в режиме ручного редактирования', p_level=>5);
                     add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: Т/О по сделке ' ||  main_tmp.t_dealid || ' находится в режиме ручного редактирования', main_tmp.t_instancedate);
                 end if;
                 
-                if nvl(main_tmp.t_demandid,0) > 0 and demand_tmp.tgt_docid = -1 
+                if nvl(main_tmp.t_dealid,0) > 0 and demand_tmp.tgt_docid = -1 
                 then 
                     error_found := true;
-                    deb('Ошибка: отсутствует сделка #1 по платежу #2', main_tmp.t_dealid, main_tmp.t_demandid);
+                    deb('Ошибка: отсутствует сделка #1 по платежу #2', main_tmp.t_dealid, main_tmp.t_demandid, p_level=>5);
                     add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: отсутствует сделка по платежу ' ||  main_tmp.t_dealid, main_tmp.t_instancedate);
                 end if;
                 
@@ -3204,9 +3287,9 @@ is
                 
             end loop; -- конец цикла 2
 
-            deb('Загружаем тикеты сделок в буфер для определения fiid бумаг, #1 сделок в запросе', tick_by_demand_arr.count);
+            deb('Загружаем тикеты сделок в буфер для определения fiid бумаг, #1 записей в запросе', tick_by_demand_arr.count);
             select * bulk collect into ddl_tick_dbt_arr_tmp from ddl_tick_dbt where t_dealid in (select column_value from table(tick_by_demand_arr));
-            deb('Загружено #1 тикетов', sql%rowcount);
+            deb('Загружено #1 уникальных тикетов сделок', sql%rowcount);
             
             -- Перегружаем fiid из тикетов в коллекцию, индексированную сделкой
             for j in 1..ddl_tick_dbt_arr_tmp.count
@@ -3218,8 +3301,8 @@ is
             tick_by_demand_arr.delete;
             deb('Создан буфер сделок, #1 записей', ddl_tick_dbt_arr.count);
             
-            
-            deb('Цикл 3 - назначение валюты платежа (для бумаг) и передача платажа в add_demand');
+            deb_empty('=');            
+            deb('Цикл 3 - назначение валюты платежа (для бумаг) и передача платежа в add_demand');
             for i in 1..demand_sou_arr.count
             loop
                 main_tmp    := demand_sou_arr(i);
@@ -3230,7 +3313,15 @@ is
                                 
                 demand_tmp.tgt_demandid :=  replobj_get(c_OBJTYPE_PAYMENT, main_tmp.t_demandid).dest_id;
                 demand_tmp.tgt_docid    :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;                
-                deal_tmp    := ddl_tick_dbt_arr( demand_tmp.tgt_docid );
+                if ddl_tick_dbt_arr.exists( demand_tmp.tgt_docid )
+                then
+                    deal_tmp    := ddl_tick_dbt_arr( demand_tmp.tgt_docid );
+                else 
+                    error_found := true;
+                    deb('Ошибка: отсутствует сделка #1 по платежу #2. В RS должна быть с DEALID=#3', main_tmp.t_dealid, main_tmp.t_demandid, demand_tmp.tgt_docid, p_level=>5);
+                    add_log( 207, c_OBJTYPE_PAYMENT, main_tmp.t_demandid, 0, 'Ошибка: отсутствует сделка по платежу ' ||  main_tmp.t_demandid || '. В целевой системе нет T_DEALID=' || demand_tmp.tgt_docid, main_tmp.t_instancedate);
+                    continue;
+                end if;
                 
                 if main_tmp.t_fikind=10
                 then
@@ -3239,7 +3330,7 @@ is
                     demand_tmp.tgt_fiid     :=  deal_tmp.t_pfi;
                 end if;
 
-                demand_tmp.r_action         := main_tmp.t_action;
+                demand_tmp.r_action         := p_action;
                 demand_tmp.r_oldobjectid    := main_tmp.t_demandid;
                 demand_tmp.tgt_dockind      := deal_tmp.T_BOFFICEKIND;
                 demand_tmp.r_isauto         := false;
@@ -3268,10 +3359,13 @@ is
 
             -- примечания
 
-        end loop; -- конец главного цикла.
+            ddl_tick_dbt_arr.delete;
+            deb('Записываем платежи в БД');
+            write_demands( p_action );
 
-        deb('Записываем платежи в БД');
-        write_demands;
+        end loop; -- конец главного цикла.
+        
+        g_debug_level_current := g_debug_level_limit;
         deb('Завершена процедура  LOAD_DEMANDS');
         
     end load_demands;
@@ -3286,7 +3380,7 @@ is
         
         index_tmp    pls_integer;
     begin
-        deb('Запущена процедура ADD_DEMAND');
+        deb('Запущена процедура ADD_DEMAND', p_level=>5);
         
         if p_demand.r_action = 1
         then
@@ -3379,13 +3473,14 @@ is
         index_tmp := demand_rq_arr.count; 
         demand_rq_arr( index_tmp )  := rq_tmp;
         demand_add_arr( index_tmp ) := add_tmp;
-        deb('Платеж добавлен (всего в буфере demand_rq_arr = #1): t_docid=#2, t_type=#3, t_fiid=' || rq_tmp.t_fiid || ', t_dealpart=' || rq_tmp.t_dealpart || ', t_state=' || rq_tmp.t_State , demand_rq_arr.count, rq_tmp.t_docid, rq_tmp.t_type, p_level=>5);
+        deb('Платеж добавлен (всего в буфере demand_rq_arr = #1): t_docid=#2, t_type=#3, t_fiid=' || rq_tmp.t_fiid || ', t_dealpart=' || rq_tmp.t_dealpart || ', t_state=' || rq_tmp.t_State || ', t_id=' || rq_tmp.t_id , demand_rq_arr.count, rq_tmp.t_docid, rq_tmp.t_type, p_level=>5);
         
-        deb('Завершена процедура ADD_DEMAND');
+        deb('Завершена процедура ADD_DEMAND', p_level=>5);
     end add_demand;
     
     -- процедура записи платежей из кэша в БД. Используется в load_demands и load_deals
-    procedure   write_demands
+    -- процедура не принимает разные t_action в разных записях - это очень усложняет обработку ошибок.
+    procedure   write_demands( p_action number )
     is
         -- на ddlrq_dbt неправильно написанный триггер, обращающийся к таблицу, на которую навешен. Такие триггеры не принимают многострочные вставки, придется обходить.
         -- обходим ORA-04091
@@ -3394,8 +3489,8 @@ is
         indexes_update  indexes_by_type;
         indexes_delete  indexes_by_type;
         
-        insert_count  number := 0; -- количество пробных вставок. Если в течение их происходят ошибки, откатываемся, корректируем t_num и повторяем.
-        insert_count_limit constant number := 3;  -- максимальное количество попыток записи. Если после этого остаются ошибки, просто фиксируем их
+        insert_count  number := 1; -- количество пробных вставок. Если в течение их происходят ошибки, откатываемся, корректируем t_num и повторяем.
+        insert_count_limit constant number := 6;  -- максимальное количество попыток записи. Если после этого остаются ошибки, просто фиксируем их
     begin
         execute immediate 'alter trigger DDLRQ_DBT_TBI disable';
         
@@ -3409,9 +3504,10 @@ is
             for i in demand_rq_arr.first..demand_rq_arr.last
             loop
                 case demand_add_arr(i).r_action
-                    when 1 then indexes_insert( indexes_insert.count ) := i;
-                    when 2 then indexes_update( indexes_update.count ) := i;
-                    when 3 then indexes_delete( indexes_delete.count ) := i;
+                    -- заполняем массивы индексами. В начальном варианте 
+                    when 1 then indexes_insert( indexes_insert.count + 1 ) := i;
+                    when 2 then indexes_update( indexes_update.count + 1 ) := i;
+                    when 3 then indexes_delete( indexes_delete.count + 1 ) := i;
                 end case;
             end loop;
             deb('Вставка: #1, обновление: #2, удаление: #3', indexes_insert.count, indexes_update.count, indexes_delete.count);
@@ -3419,66 +3515,93 @@ is
             -- вставка. 
 
 
+            case p_action
+            when 1 then -- вставка
 
+                savepoint spa;
+                -- ошибка констрейнта IDX1 - платежи одного типа должны различаться полем T_NUM. Обычно его назначает триггер, но он был отключен, поскольку он ошибочный.
+                -- так что будем пытаться это поле назначать при поимке ошибки.
+                -- всего для каждого платежа можем сделать до 3 попыток. Предполагаем, что больше 3 одинаковых платежей под сделкой не бывает. 
+                while insert_count  < insert_count_limit
+                loop
+                    deb('Попытка #1', insert_count);
+                    rollback to spa;  -- лучше сделать это при входе, из последней итерации будем выходить с грязной записью.
+                    begin
+                        forall i in indices of demand_rq_arr SAVE EXCEPTIONS
+                            insert into ddlrq_dbt values demand_rq_arr(i);
+                        deb('Попытка успешна');
+                        exit;  -- если не было ошибок, не продолжаем цикл
+                    exception 
+                        when others  -- предполагаем, что ошибки связаны только с t_num  
+                        then
+                            deb('     ' || 'Ошибки (количество - #1) при вставке платежей. Перекодируем T_NUM', SQL%BULK_EXCEPTIONS.COUNT);
+                            -- цикл по ошибкам
+                            for i in 1..SQL%BULK_EXCEPTIONS.count
+                            loop
+                                deb( '     ' || i || '> платеж #1 (сделка #2) в ddlrq_dbt. t_num = #3', demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_id, demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_docid, demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_num,  p_level => 5);
+                                demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_num := demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_num + 1;
+                            end loop;
+                    end;
+                    insert_count  := insert_count  + 1;
+                end loop;
+                -- выведем результат и отметим ошибочные записи, если остались
+                deb('Выполнена вставка в DDLRQ_DBT, количество записей - #1, количество ошибок - #2', demand_rq_arr.count, SQL%BULK_EXCEPTIONS.COUNT); 
+                for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+                loop
+                    deb('Ошибка #3 вставки платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).t_id, demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+                    demand_add_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).r_result := 2; -- флаг ошибки для replobj и dtxdemand
+                end loop;
+            
+            when 2 then -- изменение
 
-            savepoint spa;
-            -- ошибка констрейнта IDX1 - платежи одного типа должны различаться полем T_NUM. Обычно его назначает триггер, но он был отключен, поскольку он ошибочный.
-            -- так что будем пытаться это поле назначать при поимке ошибки.
-            -- всего для каждого платежа можем сделать до 3 попыток. Предполагаем, что больше 3 одинаковых платежей под сделкой не бывает. 
-            while insert_count  < insert_count_limit
-            loop
-                deb('Попытка #1', insert_count);
-                rollback to spa;  -- лучше сделать это при входе, из последней итерации будем выходить с грязной записью.
-                begin
-                    forall i in values of indexes_insert SAVE EXCEPTIONS
-                        insert into ddlrq_dbt values demand_rq_arr(i);
-                    exit;  -- если не было ошибок, не продолжаем цикл
-                exception 
-                    when others  -- предполагаем, что ошибки связаны только с t_num  
-                    then
-                        deb('     ' || 'Ошибки (количество - #1) при вставке платежей. Перекодируем T_NUM', SQL%BULK_EXCEPTIONS.COUNT);
-                        -- цикл по ошибкам
-                        for i in 0..SQL%BULK_EXCEPTIONS.COUNT-1
-                        loop
-                            deb( '     ' || i || '> платеж #1 (сделка #2) в ddlrq_dbt. t_num = #3', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid, demand_rq_arr( indexes_insert(i)).t_num,  p_level => 5);
-                            demand_rq_arr( indexes_insert(i)).t_num := demand_rq_arr( indexes_insert(i)).t_num + 1;
-                        end loop;
-                end;
-                insert_count  := insert_count  + 1;
-            end loop;
-            -- выведем результат и отметим ошибочные записи, если остались
-            deb('Выполнена вставка в DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_insert.count, SQL%BULK_EXCEPTIONS.COUNT); 
-            for i in 1..SQL%BULK_EXCEPTIONS.COUNT
-            loop
-                deb('Ошибка #3 вставки платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_insert(i)).t_id, demand_rq_arr( indexes_insert(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
-                demand_add_arr( indexes_insert(i) ).r_result := 2; -- флаг ошибки для replobj и dtxdemand
-            end loop;
+                savepoint spa;
+
+                while insert_count  < insert_count_limit
+                loop
+                    deb('Попытка #1', insert_count);
+                    rollback to spa;  -- лучше сделать это при входе, из последней итерации будем выходить с грязной записью.
+                    begin
+                        forall i in indices of demand_rq_arr SAVE EXCEPTIONS
+                            update ddlrq_dbt set row=demand_rq_arr(i) where t_id=demand_rq_arr(i).t_id;
+                        deb('Попытка успешна');
+                        exit;  -- если не было ошибок, не продолжаем цикл
+                    exception 
+                        when others  -- предполагаем, что ошибки связаны только с t_num  
+                        then
+                            deb('     ' || 'Ошибки (количество - #1) при изменении платежей. Перекодируем T_NUM', SQL%BULK_EXCEPTIONS.COUNT);
+                            -- цикл по ошибкам
+                            for i in 1..SQL%BULK_EXCEPTIONS.count
+                            loop
+                                deb( '     ' || i || '> платеж #1 (сделка #2) в ddlrq_dbt. t_num = #3', demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_id, demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_docid, demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_num,  p_level => 5);
+                                demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_num := demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1).t_num + 1;
+                            end loop;
+                    end;
+                    insert_count  := insert_count  + 1;
+                end loop;
+                -- выведем результат и отметим ошибочные записи, если остались
+                deb('Выполнено изменение в DDLRQ_DBT, количество записей - #1, количество ошибок - #2', demand_rq_arr.count, SQL%BULK_EXCEPTIONS.COUNT); 
+                for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+                loop
+                    deb('Ошибка #3 изменения платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).t_id, demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+                    demand_add_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).r_result := 2; -- флаг ошибки для replobj и dtxdemand
+                end loop;
             
-            -- обработка записей на изменение
-            forall i in values of indexes_update
-                update ddlrq_dbt set row=demand_rq_arr(i) where t_id=demand_rq_arr(i).t_id;
-    
-            deb('Выполнено изменение в DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_update.count, SQL%BULK_EXCEPTIONS.COUNT); 
-            -- цикл по возможным ошибкам
-            for i in 1..SQL%BULK_EXCEPTIONS.COUNT
-            loop
-                deb('Ошибка #3 изменения платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_update(i)).t_id, demand_rq_arr( indexes_update(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
-                demand_add_arr( indexes_update(i) ).r_result := 2;            
-            end loop;
+            when 3 then -- удаление
+                -- обработка записей на удаление
+                forall i in indices of demand_rq_arr
+                    delete ddlrq_dbt where t_id=demand_rq_arr(i).t_id;
             
-            -- обработка записей на удаление
-            forall i in values of indexes_delete
-                delete ddlrq_dbt where t_id=demand_rq_arr(i).t_id;
-            
-            deb('Выполнена удаление из DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_delete.count, SQL%BULK_EXCEPTIONS.COUNT); 
-            -- цикл по возможным ошибкам
-            for i in 1..SQL%BULK_EXCEPTIONS.COUNT
-            loop
-                deb('Ошибка #3 удаления платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( indexes_delete(i)).t_id, demand_rq_arr( indexes_delete(i)).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
-                demand_add_arr( indexes_delete(i) ).r_result := 2;
-            end loop;
+                deb('Выполнена удаление из DDLRQ_DBT, количество записей - #1, количество ошибок - #2', indexes_delete.count, SQL%BULK_EXCEPTIONS.COUNT); 
+                -- цикл по возможным ошибкам
+                for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+                loop
+                    deb('Ошибка #3 удаления платежа #1 (сделка #2) в ddlrq_dbt', demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).t_id, demand_rq_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).t_docid,  SQL%BULK_EXCEPTIONS(i).ERROR_CODE,  p_level => 5);
+                    demand_add_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).r_result := 2;
+                end loop;
+            end case;
 
             commit;
+            
         
             -- заполняем dtxreplobj_dbt. Только для успешно обработанных записей. Сначала на всякий случай убираем аналогичные существующие записи.
             deb('Выполняется вставка в DTXREPLOBJ');
@@ -3661,7 +3784,9 @@ begin
     end loop;
    
     tmp_arr.delete;
-    
+ 
+    g_debug_level_current := g_debug_level_limit;
+        
     deb('=== Завершен исполняемый блок пакета ===');
 end load_rss;
 /

@@ -1,10 +1,15 @@
 CREATE OR REPLACE PACKAGE GEB_20210823.load_rss
 is
     -- параметры
-    g_limit constant number := 1000;             -- количество одновременно загружаемых записей источника
+    g_limit constant number := 10000;             -- количество одновременно загружаемых записей источника
+    g_limit_demand constant number := 100000;      -- количество одновременно загружаемых записей источника, отдельно дл€ платежей
     g_debug_output boolean := true;     -- записывать отладочную информацию в буфер DBMS_OUTPUT
     g_debug_table  boolean := false;    -- записывать отладочную информацию в таблицу
-    g_debug_level_limit constant pls_integer := 5;    -- максимальный уровень важности сообщений, который будет зафиксирован. важность уменьшаетс€ от 0 до 10.
+    g_debug_level_limit constant pls_integer := 3;    -- максимальный уровень важности сообщений, который будет зафиксирован. важность уменьшаетс€ от 0 до 10.
+                                             -- на уровне до 5 запрещена информаци€ в логе по отдельным строкам, только агрегатна€.
+                                             -- считаем, что до 10 строк в обработке - отладочна€ выборка.
+                                             -- ѕри количестве записей в обработке < 10 этот параметр временно автоматически переключаетс€ в 10, после обработки восстанавливаетс€
+    g_debug_level_current pls_integer;
     g_oper constant number := 1;  -- операционист, который будет прописыватьс€ во все таблицы
     g_ourbank constant number := 12;     --  од нашего банка. ѕроверить
     g_department  constant number := 1;  -- ƒепартамент по умолчанию. —м. ddp_dep_dbt
@@ -185,7 +190,7 @@ is
     -- процедура добавлени€ платежа в кэш DEMAND_RQ_ARR
     procedure   add_demand (p_demand   demand_type);
     -- процедура записи платежей из кэша в Ѕƒ. »спользуетс€ в load_demands и load_deals
-    procedure   write_demands;                             
+    procedure   write_demands( p_action number );                             
 
 
     -- основна€ процедура --
