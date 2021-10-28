@@ -1,8 +1,8 @@
-CREATE OR REPLACE PACKAGE GEB_20210823.load_rss
+CREATE OR REPLACE PACKAGE GEB_20210823_TST.load_rss
 is
     -- параметры
-    g_limit constant number := 10000;             -- количество одновременно загружаемых записей источника
-    g_limit_demand constant number := 100000;      -- количество одновременно загружаемых записей источника, отдельно для платежей
+    g_limit constant number := 200000;             -- количество одновременно загружаемых записей источника
+    g_limit_demand constant number := 400000;      -- количество одновременно загружаемых записей источника, отдельно для платежей
     g_debug_output boolean := true;     -- записывать отладочную информацию в буфер DBMS_OUTPUT
     g_debug_table  boolean := false;    -- записывать отладочную информацию в таблицу
     g_debug_level_limit constant pls_integer := 3;    -- максимальный уровень важности сообщений, который будет зафиксирован. важность уменьшается от 0 до 10.
@@ -161,6 +161,7 @@ is
                             r_state     number(2),
                             r_sum       number,
                             r_note      varchar2(500),
+                            r_balancerate number,
                             r_date      date,
                             r_oldobjectid number,  -- номер из dtxdemand для простановки replstate
                             r_subobjnum number,    -- что должно проставиться в dtxreplobj.T_SUBOBJNUM
@@ -267,6 +268,8 @@ is
     
     type tmp_varchar_arr_type is table of varchar2(100) index by pls_integer;  -- очень вспомогательная
     type tmp_varchar_back_arr_type is table of pls_integer index by varchar2(100);  -- очень вспомогательная
+
+    my_SID  number; -- для сбора статистики по пореблению памяти и т.д.
     
 end load_rss;
 /
