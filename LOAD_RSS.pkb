@@ -1527,8 +1527,85 @@ perf_query_end;
         l_dur_min := extract(minute from l_dur_interval);
         l_dur_sec := extract(second from l_dur_interval); 
         deb('Завершена процедура DEALS_GENERAL_CHECK. Продолжительность - #1:#2', l_dur_min, l_dur_sec);
-        
+        -- все данные с идентификаторами целевой системы остаются в таблице dtxdeal_tmp
     end deals_general_check;
+
+
+            -- перекодирует kind сделки в значение из домена целевой системы
+            function GetDealKind( p_kind number, p_avoirissid number, p_market number, p_isbasket char, p_isksu char)    return number
+            DETERMINISTIC
+            is
+                l_dealtype_tmp number;
+                l_ismarket boolean;
+                l_fiid  number;
+            begin
+                l_fiid := p_avoirissid;
+                l_ismarket := case when p_market > 0 then true else false end;
+
+                case p_kind
+                when    10  then
+                            if l_ismarket then
+                                l_dealtype_tmp := 2143; -- покупка биржевая
+                            else
+                                l_dealtype_tmp := 2183; -- покупка внебиржевая
+                            end if;
+                when    20  then
+                            if l_ismarket then
+                                l_dealtype_tmp := 2153; -- продажа биржевая
+                            else
+                                l_dealtype_tmp := 2193; -- продажа внебиржевая
+                            end if;
+                when    30  then
+                            if l_ismarket then
+                                    if p_isbasket = chr(88) then
+                                            l_dealtype_tmp := 2123; -- репо покупка биржевая КСУ
+                                    else
+                                            l_dealtype_tmp := 2122; -- репо покупка биржевая
+                                    end if;
+                            else
+                                    l_dealtype_tmp := 2132; -- репо покупка внебиржевая
+                            end if;
+                when    40  then
+                            if l_ismarket then
+                                    if p_isbasket = chr(88) then
+                                            l_dealtype_tmp := 2128; -- репо продажа биржевая КСУ
+                                    else
+                                            l_dealtype_tmp := 2127; -- репо продажа биржевая
+                                    end if;
+                            else
+                                    l_dealtype_tmp := 2137; -- репо продажа внебиржевая
+                            end if;
+                when    50  then
+                            l_dealtype_tmp := 2195; -- займ - привлечение
+                when    60  then
+                            l_dealtype_tmp := 2197; -- займ - размещение
+                when    70  then
+                            l_dealtype_tmp := 2021; -- погашение выпуска
+                when    80  then
+                            l_dealtype_tmp := 2022; -- погашение купона
+                when    90  then
+                            l_dealtype_tmp := 2027; -- погашение облигации частичное
+                when    100 then
+                            l_dealtype_tmp := 2105;
+                else
+                        l_dealtype_tmp := -1;
+                end case;
+
+                if p_isbasket=chr(88)
+                then
+                    if l_dealtype_tmp in (2122, 2132) then
+                        l_dealtype_tmp := 2139; -- обратное РЕПО на корзину
+                    elsif l_dealtype_tmp in (2127, 2137) then
+                        l_dealtype_tmp := 2139; -- прямое РЕПО на корзину
+                    else
+                        l_dealtype_tmp := -1;
+                    end if;
+                end if;
+
+                return l_dealtype_tmp;
+
+            end GetDealKind;
+
 
 
     procedure load_deals( p_date date, p_action number)
@@ -2062,8 +2139,7 @@ perf_query_end;
                         l_main_tmp.T_PRICE_CALC     := nvl( l_main_tmp.T_PRICE_CALC, 0);
                         l_main_tmp.T_PRICE_CALC_DEF := nvl( l_main_tmp.T_PRICE_CALC_DEF, 0);
                         l_main_tmp.T_PRICE_CALC_METHOD := nvl( l_main_tmp.T_PRICE_CALC_METHOD, 0);
-                        l_main_tmp.T_PRICE_CALC_VAL := nvl( l_main_tmp.T_FISSKIND, -1);
-                        l_main_tmp.T_PRICE_CALC_VAL := nvl( l_main_tmp.T_FISSKIND, -1);
+                        l_main_tmp.T_PRICE_CALC_VAL := nvl( l_main_tmp.T_PRICE_CALC_VAL, -1);
                         l_main_tmp.T_PRICE_CALC_MET_NOTE := trim( l_main_tmp.T_PRICE_CALC_MET_NOTE);
                         l_main_tmp.T_CONDITIONS     := trim( l_main_tmp.T_CONDITIONS);
                         l_main_tmp.T_BALANCEDATE    := nvl( l_main_tmp.T_BALANCEDATE, date'0001-01-01');
@@ -2340,79 +2416,7 @@ perf_query_end;
                 deb('Завершена процедура FILLING_AVOIRISS_BUFFER');
             end filling_avoiriss_buffer;
 
-            -- перекодирует kind сделки в значение из домена целевой системы
-            function GetDealKind( p_kind number, p_add_tmp  deal_sou_add_type)    return number
-            is
-                l_dealtype_tmp number;
-                l_ismarket boolean;
-                l_fiid  number;
-            begin
-                l_fiid := p_add_tmp.tgt_avoirissid;
-                l_ismarket := case when p_add_tmp.tgt_market > 0 then true else false end;
 
-                case p_kind
-                when    10  then
-                            if l_ismarket then
-                                l_dealtype_tmp := 2143; -- покупка биржевая
-                            else
-                                l_dealtype_tmp := 2183; -- покупка внебиржевая
-                            end if;
-                when    20  then
-                            if l_ismarket then
-                                l_dealtype_tmp := 2153; -- продажа биржевая
-                            else
-                                l_dealtype_tmp := 2193; -- продажа внебиржевая
-                            end if;
-                when    30  then
-                            if l_ismarket then
-                                    if avr_add_arr(l_fiid).r_is_ksu = 1 then
-                                            l_dealtype_tmp := 2123; -- репо покупка биржевая КСУ
-                                    else
-                                            l_dealtype_tmp := 2122; -- репо покупка биржевая
-                                    end if;
-                            else
-                                    l_dealtype_tmp := 2132; -- репо покупка внебиржевая
-                            end if;
-                when    40  then
-                            if l_ismarket then
-                                    if avr_add_arr(l_fiid).r_is_ksu = 1 then
-                                            l_dealtype_tmp := 2128; -- репо продажа биржевая КСУ
-                                    else
-                                            l_dealtype_tmp := 2127; -- репо продажа биржевая
-                                    end if;
-                            else
-                                    l_dealtype_tmp := 2137; -- репо продажа внебиржевая
-                            end if;
-                when    50  then
-                            l_dealtype_tmp := 2195; -- займ - привлечение
-                when    60  then
-                            l_dealtype_tmp := 2197; -- займ - размещение
-                when    70  then
-                            l_dealtype_tmp := 2021; -- погашение выпуска
-                when    80  then
-                            l_dealtype_tmp := 2022; -- погашение купона
-                when    90  then
-                            l_dealtype_tmp := 2027; -- погашение облигации частичное
-                when    100 then
-                            l_dealtype_tmp := 2105;
-                else
-                        l_dealtype_tmp := -1;
-                end case;
-
-                if p_add_tmp.is_basket
-                then
-                    if l_dealtype_tmp in (2122, 2132) then
-                        l_dealtype_tmp := 2139; -- обратное РЕПО на корзину
-                    elsif l_dealtype_tmp in (2127, 2137) then
-                        l_dealtype_tmp := 2139; -- прямое РЕПО на корзину
-                    else
-                        l_dealtype_tmp := -1;
-                    end if;
-                end if;
-
-                return l_dealtype_tmp;
-
-            end GetDealKind;
 
             -- Добавляет платеж по NEEDDEMAND в буфер
             procedure add_auto_demands( p_main_tmp DTXDEAL_DBT%ROWTYPE, p_tick_tmp DDL_TICK_DBT%ROWTYPE, p_leg_tmp DDL_LEG_DBT%ROWTYPE)
@@ -2918,7 +2922,7 @@ perf_query_end;
                 tick_tmp.t_buygoal := 0;  -- SGS заменить на BUYGOAL_RESALE
 
                 -- определяем T_kind сделки. Нельзя сделать это в овремя очистки - нужны параметры бумаги, которые загружаются после.
-                tick_tmp.t_dealtype  := GetDealKind( main_tmp.t_kind,  add_tmp);
+                --tick_tmp.t_dealtype  := GetDealKind( main_tmp.t_kind,  add_tmp);
 
 
                 tick_tmp.T_DealCodeTS := main_tmp.T_EXTCODE;

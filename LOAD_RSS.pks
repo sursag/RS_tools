@@ -186,7 +186,7 @@ is
     demand_add_arr      demand_add_arr_type; 
                        
                                       
-    
+    function GetDealKind( p_kind number, p_avoirissid number, p_market number, p_isbasket char, p_isksu char)    return number DETERMINISTIC;
                     
     -- процедура добавления платежа в кэш DEMAND_RQ_ARR
     procedure   add_demand (p_demand   demand_type);

@@ -1,6 +1,8 @@
 --SQL Statement which produced this data:
 --
---  select rowid, a.* from DTX_QUERY_DBT a;
+--  select rowid, a.* from DTX_QUERY_DBT a
+--  ---------------------------------------------
+--  -- Очистка для перезагрузки сделок;
 --
 Insert into DTX_QUERY_DBT
    (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
@@ -48,7 +50,7 @@ Insert into DTX_QUERY_DBT
    (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
     T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
  Values
-   (40, 80, 3, 500, 'update dtxdeal_tmp set TGT_DEALID = ddl_tick_dbt_seq.nextval where t_replstate=0', 
+   (40, 80, 3, 500, 'update dtxdeal_tmp set TGT_DEALID = ddl_tick_dbt_seq.nextval where t_replstate=0 and t_action=1', 
     1, 'Обогащение записи - добавление TGT_DEALID из последовательности для вставок', 'Добавление TGT_DEALID для вставок', 'X');
 Insert into DTX_QUERY_DBT
    (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
@@ -96,14 +98,44 @@ Insert into DTX_QUERY_DBT
    (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
     T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
  Values
-   (48, 80, 3, 90, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0 and T_PARTIALID is not null) tgt '||CHR(10)||'using (select t_objectid, T_SUBOBJNUM, t_destid from dtxreplobj_dbt where t_objecttype=50 and t_objstate=0) sou on (sou.t_objectid=tgt.T_PARTIALID)'||CHR(10)||'when matched then update set tgt.TGT_WARRANTID=sou.T_DESTID', 
+   (48, 80, 3, 90, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0 and T_PARTIALID is not null) tgt '||CHR(13)||CHR(10)||'using (select t_objectid, T_SUBOBJNUM, t_destid from dtxreplobj_dbt where t_objecttype=60 and t_objstate=0) sou on (sou.t_objectid=tgt.T_PARTIALID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_PARTIALID=sou.T_DESTID', 
     1, 'Обогащение записи - добавление TGT_PARTIALID из DTXREPLOBJ_DBT', 'Добавление TGT_PARTIALID', 'X');
 Insert into DTX_QUERY_DBT
    (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
     T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
  Values
-   (26, 80, 3, 10, 'merge /*+ # */ into dtxdeal_tmp tgt using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=80 and t_objstate=0) sou on (sou.t_objectid=tgt.t_dealid)'||CHR(13)||CHR(10)||'when matched then update set tgt.tgt_dealid=sou.t_destid', 
-    1, 'Обогащение записи - добавление TGT_DEALID из DTXREPLOBJ_DBT', 'Добавление TGT_DEALID', 'X');
+   (49, 80, 3, 95, 'update dtxdeal_tmp set TGT_GROUP = (select RSB_SECUR.get_OperationGroup( op.t_systypes ) from ddl_tick_dbt tk, doprkoper_dbt op where op.T_KIND_OPERATION = tk.T_DEALTYPE and op.T_DOCKIND = tk.T_BOFFICEKIND and tk.t_dealid=TGT_DEALID) where t_replstate=0 and t_action=2', 
+    1, 'Обогащение записи - добавление TGT_GROUP для изменений', 'Добавление TGT_GROUP для изменений (action=2)', 'X');
+Insert into DTX_QUERY_DBT
+   (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
+    T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
+ Values
+   (50, 80, 3, 100, 'update dtxdeal_tmp set TGT_ISBUY  = decode(RSB_SECUR.IsBuy(TGT_GROUP), 1, chr(88), chr(0)),'||CHR(10)||'                        TGT_ISSALE = decode(RSB_SECUR.IsSale(TGT_GROUP), 1, chr(88), chr(0)),'||CHR(10)||'                        TGT_ISREPO = decode(RSB_SECUR.IsRepo(TGT_GROUP), 1, chr(88), chr(0)),'||CHR(10)||'                        TGT_ISLOAN = decode(RSB_SECUR.IsLoan(TGT_GROUP), 1, chr(88), chr(0))'||CHR(10)||' where t_replstate=0 and t_action=2', 
+    1, 'Обогащение записи - добавление ISBUY/ISSALE/ISREPO/ISLOAN для изменений', 'Добавление ISBUY/ISSALE/ISREPO/ISLOAN для изменений (action=2)', 'X');
+Insert into DTX_QUERY_DBT
+   (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
+    T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
+ Values
+   (51, 80, 3, 105, 'update dtxdeal_tmp set TGT_ISLOAN = CHR(88) where t_replstate=0 and t_action=1 and t_kind in (50,60)', 
+    1, 'Обогащение записи - добавление TGT_ISLOAN для вставок (action=1)', 'Добавление TGT_ISLOAN для вставок (action=1)', 'X');
+Insert into DTX_QUERY_DBT
+   (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
+    T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
+ Values
+   (53, 80, 3, 110, 'update dtxdeal_tmp set TGT_WARRANT_NUM = (select t_number from dfiwarnts_dbt where t_id = TGT_WARRANTID) where TGT_WARRANTID is not null', 
+    1, 'Обогащение записи - добавление TGT_WARRANT_NUM по TGT_WARRANTID', 'Добавление TGT_WARRANT_NUM по TGT_WARRANTID', 'X');
+Insert into DTX_QUERY_DBT
+   (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
+    T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
+ Values
+   (54, 80, 3, 115, 'update dtxdeal_tmp set TGT_PARTIAL_NUM = (select t_number from dfiwarnts_dbt where t_id = TGT_PARTIALID) where TGT_PARTIALID is not null', 
+    1, 'Обогащение записи - добавление TGT_PARTIAL_NUM по TGT_PARTIALID', 'Добавление TGT_PARTIAL_NUM по TGT_PARTIALID', 'X');
+Insert into DTX_QUERY_DBT
+   (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
+    T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
+ Values
+   (26, 80, 3, 10, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_action>1) tgt using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=80 and t_objstate=0) sou on (sou.t_objectid=tgt.t_dealid)'||CHR(13)||CHR(10)||'when matched then update set tgt.tgt_dealid=sou.t_destid', 
+    1, 'Обогащение записи - добавление TGT_DEALID из DTXREPLOBJ_DBT', 'Добавление TGT_DEALID (для измененй/удалений)', 'X');
 Insert into DTX_QUERY_DBT
    (T_SCREENID, T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, 
     T_SEVERITY, T_DESC, T_NAME, T_IN_USE)
