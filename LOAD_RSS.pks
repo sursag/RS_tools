@@ -270,6 +270,8 @@ is
     type tmp_varchar_back_arr_type is table of pls_integer index by varchar2(100);  -- очень вспомогательная
 
     my_SID  number; -- для сбора статистики по пореблению памяти и т.д.
+    g_SESSION_ID number(10);
+    g_SESS_DETAIL_ID number(10);
     
 end load_rss;
 /

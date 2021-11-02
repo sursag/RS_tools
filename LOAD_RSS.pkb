@@ -29,6 +29,7 @@ is
     procedure_exec_interval interval day to second;
     tmp_date_perf date;
     tmp_num_perf number;
+    deb_start_timestamp timestamp;
 
     procedure perf_query_start( num number )
     is begin
@@ -129,15 +130,19 @@ is
     is
     begin
         deb('Запущена процедура UPLOAD_SUBJECT_TYPES');
-        forall i in indices of dpartyown_arr SAVE EXCEPTIONS
-                insert into dpartyown_dbt(T_PARTYID, T_PARTYKIND, T_SUPERIOR, T_SUBKIND)
-                values( dpartyown_arr(i).T_PARTYID, dpartyown_arr(i).T_PARTYKIND, dpartyown_arr(i).T_SUPERIOR, dpartyown_arr(i).T_SUBKIND);
-        commit;
+        begin
+            forall i in indices of dpartyown_arr SAVE EXCEPTIONS
+                    insert into dpartyown_dbt(T_PARTYID, T_PARTYKIND, T_SUPERIOR, T_SUBKIND)
+                    values( dpartyown_arr(i).T_PARTYID, dpartyown_arr(i).T_PARTYKIND, dpartyown_arr(i).T_SUPERIOR, dpartyown_arr(i).T_SUBKIND);
+            commit;
+        exception when others
+        then 
+            for i in 1..SQL%BULK_EXCEPTIONS.COUNT
+            loop
+                deb('Ошибка #3 добавления субъекту #1 типа #2', dpartyown_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).t_partyid, dpartyown_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX-1 ).T_PARTYKIND, SQL%BULK_EXCEPTIONS(i).ERROR_CODE, p_level => 5);
+            end loop;
+        end;
         deb('Выполнена вставка в DPARTYOWN_DBT, количество ошибок - #1', SQL%BULK_EXCEPTIONS.COUNT);
-        for i in 1..SQL%BULK_EXCEPTIONS.COUNT
-        loop
-            deb('Ошибка #3 добавления субъекту #1 типа #2', dpartyown_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).t_partyid, dpartyown_arr( SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ).T_PARTYKIND, SQL%BULK_EXCEPTIONS(i).ERROR_CODE, p_level => 5);
-        end loop;
         deb('Завершена процедура UPLOAD_SUBJECT_TYPES');
     end  upload_subject_types;
 
@@ -194,6 +199,10 @@ is
         deb('Запущена процедура WRITE_CATEGS');
         deb('Количество записей в буфере - #1', categ_arr.count);
         forall i in indices of categ_arr
+            delete from dobjatcor_dbt
+            where t_objecttype=categ_arr(i).r_objtype and t_groupid=categ_arr(i).r_kind and t_object=categ_arr(i).r_struniid;
+
+        forall i in indices of categ_arr
             insert /*+ append_values */ into dobjatcor_dbt(t_objecttype, t_groupid, t_attrid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE)
             select t_objecttype, t_groupid, t_attrid,  categ_arr(i).r_struniid, chr(88), g_oper, date'0001-01-01', date'9999-12-31' from dobjattr_dbt
             where t_name = categ_arr(i).r_value and t_groupid=categ_arr(i).r_kind and t_objecttype=categ_arr(i).r_objtype;
@@ -204,6 +213,9 @@ is
         categ_arr.delete;
         DBMS_SESSION.FREE_UNUSED_USER_MEMORY;
         deb('Завершена процедура WRITE_CATEGS');
+    --exception when others 
+    --then
+    --    deb('Ошибка записи категорий объектов в процедуре WRITE_CATEGS');        
     end write_categs;
 
 
@@ -220,7 +232,7 @@ is
             deb('Индекс ' || i || ', r_objtype = ' || note_arr(i).r_objtype || ', r_struniid = ' || note_arr(i).r_struniid || ', r_kind = ' || note_arr(i).r_kind || ', r_date = ' || note_arr(i).r_date  || ', r_value = ' || note_arr(i).r_value, p_level=>5);
         end loop;
 
-        forall i in indices of note_arr SAVE EXCEPTIONS
+        forall i in indices of note_arr 
                 delete from dnotetext_dbt
                 where T_OBJECTTYPE=note_arr(i).r_objtype and T_DOCUMENTID=note_arr(i).r_struniid and T_NOTEKIND=note_arr(i).r_kind;
 
@@ -672,6 +684,9 @@ perf_query_end;
         l_id number;
         l_text varchar2(1000) := p_text;
         l_delim varchar2(50) := ''; --trim(substr(dbms_utility.format_call_stack, 99,10));
+        dur_min number;
+        dur_sec number;
+        dur_interval interval day to second;
     begin
         -- для производительности
         -- лимит важности в спецификации пакета. Если переданное значение выше, сообщение не записывается.
@@ -723,6 +738,7 @@ perf_query_end;
         if upper(p_text) like 'ЗАПУЩЕНА%ПРОЦЕДУРА%'
         then
             deb_flag := deb_flag + 1;
+            deb_start_timestamp := current_timestamp;
         end if;
     end deb;
 
@@ -791,6 +807,10 @@ perf_query_end;
 
         l_counter   number := 0;
         l_err_counter   number := 0;
+        
+        --replobj_rec_arr             replobj_rec_arr_type;
+        --replobj_rec_inx_arr         replobj_rec_inx_arr_type; -- индексная коллекция
+        --replobj_tmp_arr             replobj_tmp_arr_type;
 
 
         -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
@@ -1426,8 +1446,89 @@ perf_query_end;
     end load_rates;
 
 
+    -- Процедура выполняет общие проверки над всем датасетом
+    -- для операции вставки выполняется ппроверка на уникальность t_dealcode,
+    -- для операции изменения/удаления - на наличие t_dealid в системе
+    -- поскольку проверка выполняется на урочне sql, имеет смысл вынести    
+    procedure deals_general_check( p_action number, p_date date, p_enddate date := null)
+    is 
+        l_counter number;
+        l_startdate date;
+        l_enddate date;
+        l_dur_interval interval day to second;
+        l_dur_min pls_integer;
+        l_dur_sec pls_integer;
+        l_perf_start timestamp;
+        
+        procedure run_set( p_set number )
+        is 
+        begin
+            -- Первый сет запросов, приводит поля снимка в нужному формату
+            for q_rec in (select * from dtx_query_dbt where t_set=p_set and t_in_use='X' order by t_num)
+            loop
+                begin
+                    if q_rec.t_use_bind = 'X' then
+                        execute immediate q_rec.t_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_screenid;
+                    else
+                        execute immediate q_rec.t_text;
+                    end if;
+                    deb(q_rec.t_name || '.  Обработано #1 записей', sql%rowcount);
+                exception
+                when others then
+                    raise;
+                end; 
+            end loop;
+            commit;
+        end run_set;
+    begin
+        deb('Запущена процедура DEALS_GENERAL_CHECK');
+        l_perf_start := current_timestamp;
+        -- TODO под одному объекту не должно быть больше одной записи за instancedate
+        l_startdate := p_date;
+        l_enddate := nvl(p_enddate, p_date+1 - 1/24/60/60); -- если instancedate без временной составляющей, чтобы не цеплял следующий день  
+        
+        -- получаем снимок из dtxdeal_dbt в dtxdeal_tmp - только тот набор записей, который необходимо реплицировать. Записываем его в таблицу, имеющею пустые поля для индетификаторов целевой системы.
+        deb('Очистка таблицы DTXDEAL_TMP');
+        -- таблица очищается в начале, а не в конце, чтобы данные между вызовами процедуры были доступны для анализа
+        execute immediate
+            'truncate table dtxdeal_tmp';
+        
+        deb('Делаем снимок с ' || to_char(l_startdate,'dd.mm.yyyy') || ' по ' || to_char(l_enddate,'dd.mm.yyyy'));
+        -- просто переливаем данные с replstate=0 за нужный instancedate
+        execute immediate
+            'insert /*+ append */ into dtxdeal_tmp(T_DEALID, T_INSTANCEDATE, T_ACTION, T_REPLSTATE, T_KIND, T_EXTCODE, T_MARKETCODE, T_PARTYCODE, T_CODE, T_DATE, T_TIME, T_CLOSEDATE, T_TECHTYPE, T_TSKIND, T_ACCOUNTTYPE, T_MARKETID, T_SECTOR, T_BROKERID, T_PARTYID, T_DEPARTMENT, T_AVOIRISSID, T_WARRANTID, T_PARTIALID, T_AMOUNT, T_CURRENCYID, T_PRICE, T_POINT, T_COST, T_NKD, T_TOTALCOST, T_RATE, T_PRICE2, T_COST2, T_NKD2, T_TOTALCOST2, T_PAYDATE, T_SUPLDATE, T_PAYDATE2, T_SUPLDATE2, T_CONTRNUM, T_CONTRDATE, T_REPOBASE, T_COSTCHANGEONCOMP, T_COSTCHANGE, T_COSTCHANGEONAMOR, T_ADJUSTMENT, T_NEEDDEMAND, T_ATANYDAY, T_CONDITIONS, T_PAYMCUR, T_ISPFI_1, T_ISPFI_2, T_COUNTRY, T_NKDFIID, T_LIMIT, T_CHRATE, T_CHAVR, T_DIV, T_BALANCEDATE, T_DOPCONTROL, T_DOPCONTROL_NOTE, T_FISSKIND, T_PRICE_CALC_METHOD, T_PRICE_CALC, T_PRICE_CALC_VAL, T_PRICE_CALC_DEF, T_PRICE_CALC_OUTLAY, T_PARENTID, T_PRICE_CALC_MET_NOTE, T_NEEDDEMAND2, T_INITBUYDATE, T_CONTROL_DEAL_NOTE, T_CONTROL_DEAL_NOTE_DATE, T_REPO_PROC_ACCOUNT, T_PRIOR_PORTFOLIOID, T_PORTFOLIOID, T_NETTING_DEALID_DEST)
+            select T_DEALID, T_INSTANCEDATE, T_ACTION, T_REPLSTATE, T_KIND, T_EXTCODE, T_MARKETCODE, T_PARTYCODE, T_CODE, T_DATE, T_TIME, T_CLOSEDATE, T_TECHTYPE, T_TSKIND, T_ACCOUNTTYPE, T_MARKETID, T_SECTOR, T_BROKERID, T_PARTYID, T_DEPARTMENT, T_AVOIRISSID, T_WARRANTID, T_PARTIALID, T_AMOUNT, T_CURRENCYID, T_PRICE, T_POINT, T_COST, T_NKD, T_TOTALCOST, T_RATE, T_PRICE2, T_COST2, T_NKD2, T_TOTALCOST2, T_PAYDATE, T_SUPLDATE, T_PAYDATE2, T_SUPLDATE2, T_CONTRNUM, T_CONTRDATE, T_REPOBASE, T_COSTCHANGEONCOMP, T_COSTCHANGE, T_COSTCHANGEONAMOR, T_ADJUSTMENT, T_NEEDDEMAND, T_ATANYDAY, T_CONDITIONS, T_PAYMCUR, T_ISPFI_1, T_ISPFI_2, T_COUNTRY, T_NKDFIID, T_LIMIT, T_CHRATE, T_CHAVR, T_DIV, T_BALANCEDATE, T_DOPCONTROL, T_DOPCONTROL_NOTE, T_FISSKIND, T_PRICE_CALC_METHOD, T_PRICE_CALC, T_PRICE_CALC_VAL, T_PRICE_CALC_DEF, T_PRICE_CALC_OUTLAY, T_PARENTID, T_PRICE_CALC_MET_NOTE, T_NEEDDEMAND2, T_INITBUYDATE, T_CONTROL_DEAL_NOTE, T_CONTROL_DEAL_NOTE_DATE, T_REPO_PROC_ACCOUNT, T_PRIOR_PORTFOLIOID, T_PORTFOLIOID, T_NETTING_DEALID_DEST
+            from dtxdeal_dbt where t_instancedate between :1 and :2 and t_replstate=0' using l_startdate, l_enddate;
+        commit;
+        dbms_stats.gather_table_stats(user, 'DTXDEAL_TMP', cascade=>true);
+        
+        deb('Первый сет запросов. Приводим поля снимка к нужному формату');
+        
+        run_set(1);
+       
+        deb('Второй сет запросов. Заполнение таблицы ошибок');
+        -- Второй сет запросов, проверяем заполнение полей, определяем ошибки
+        
+        run_set(2);
+        
+        -- отметим найденные ошибки. 
+        execute immediate
+        'update dtxdeal_tmp set t_replstate=2 where t_dealid in (select t_objectid from dtx_error_dbt where t_objecttype=80 and t_sessid=:1 and t_detailid=:2)' using g_SESSION_ID, g_SESS_DETAIL_ID;
+        
+        deb('Третий сет запросов. Обогащение идентификаторами из целевой системы');
 
+        run_set(3);
 
+        deb('Четвертый сет запросов. Проверка по бизнес-правилам');
+
+        run_set(4);
+        
+        l_dur_interval := current_timestamp - l_perf_start;
+        l_dur_min := extract(minute from l_dur_interval);
+        l_dur_sec := extract(second from l_dur_interval); 
+        deb('Завершена процедура DEALS_GENERAL_CHECK. Продолжительность - #1:#2', l_dur_min, l_dur_sec);
+        
+    end deals_general_check;
 
 
     procedure load_deals( p_date date, p_action number)
@@ -1435,6 +1536,7 @@ perf_query_end;
 
             categ_arr    categ_arr_type;
             note_arr    note_arr_type;
+            
             --replobj_rec_arr             replobj_rec_arr_type;
             --replobj_rec_inx_arr         replobj_rec_inx_arr_type; -- индексная коллекция
             --replobj_tmp_arr             replobj_tmp_arr_type;            
@@ -1578,8 +1680,7 @@ perf_query_end;
             end pr_include;
 
 
-            -- сохраняем все добавленные сделки
-                -- все примечания к объектам из буфера записываются в базу. Буфер очищается.
+            -- Записываем в таблицы из буфера все добавленные сделки (только для ACTION=1)
             procedure write_deals_to_ddltick
             is
                 clop number;
@@ -1588,7 +1689,8 @@ perf_query_end;
                 tgt_dealid_tmp  number; -- dealid записи в целевой системе
             begin
                 deb('Запущена процедура WRITE_DEALS_TO_DDLTICK');
-                if ddl_tick_dbt_arr_out.count = 0 then
+                if ddl_tick_dbt_arr_out.count = 0 
+                then
                     deb('Нет записей для обработки');
                 else
                     deb('Вставка тикетов сделок DDL_TICK_DBT, в коллекции #1 записей', ddl_tick_dbt_arr_out.count);
@@ -1655,17 +1757,18 @@ perf_query_end;
 
                     -- todo forall переделать на table()
                     -- уже существующих подобных записей быть не должно. Это удаление мусора, если он есть.
-                    forall i in indices of deal_sou_arr SAVE EXCEPTIONS
+                    forall i in indices of deal_sou_arr 
                         delete from dtxreplobj_dbt
                         where T_OBJECTTYPE = 80 and T_OBJECTID = deal_sou_arr(i).t_dealid and deal_sou_add_arr(i).result < 2 and deal_sou_arr(i).t_action = 1; -- только для успешно загруженных вставок
                     deb('Удаление мусора, обработано #1 записей', SQL%ROWCOUNT);
-
-                    forall i in indices of deal_sou_arr SAVE EXCEPTIONS
+                    commit; 
+                    
+                    forall i in indices of deal_sou_arr 
                         insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
                         select 80, deal_sou_arr(i).t_dealid, 0, deal_sou_add_arr(i).tgt_dealid, 0, 0 from dual
                         where deal_sou_add_arr(i).result < 2 and deal_sou_arr(i).t_action = 1; -- только для успешно загруженных записей.
                     deb('Вставка в dtxreplobj_dbt (для t_action=1), обработано #1 записей', SQL%ROWCOUNT);
-
+                    
                     -- здесь проставляем признак удаленной записи в dtxreplobj
                     forall i in indices of deal_sou_arr SAVE EXCEPTIONS
                         update dtxreplobj_dbt set T_OBJSTATE=2 where T_OBJECTTYPE=80 and T_OBJECTID=deal_sou_arr(i).t_dealid and T_DESTID=deal_sou_add_arr(i).tgt_dealid
@@ -2416,6 +2519,19 @@ perf_query_end;
     begin
         deb_empty('=');
         procedure_start_date := sysdate;
+        
+        -- Если SESSION_ID был не зназначен, то есть, LOAD_DEALS вызвали вручную, назначим его
+        if g_SESSION_ID is null then
+            insert into dtx_session_dbt(t_startdate, t_enddate, t_user, t_status)
+            values( p_date, p_date+1-1/24/60/60, user, 'R') returning t_sessid into g_SESSION_ID;
+        end if;
+        
+        insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
+        values (g_SESSION_ID, 'LOAD_DEALS', p_date, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
+        
+        commit;
+        
+        
         l_err_counter := 0;
         l_counter := 0;
         add_record_in_journal('DEALS', p_date, p_action);
@@ -2449,6 +2565,10 @@ perf_query_end;
             deb_empty('=');
             tmp_arr.delete;
             DBMS_SESSION.FREE_UNUSED_USER_MEMORY;
+            
+            deals_general_check( p_action, p_date);
+            return;
+            
             deb('Цикл 1 - регистрация кодов в буфере REPLOBJ');
             write_memory_stat;
             for i in deal_sou_arr.first .. deal_sou_arr.last
@@ -2778,7 +2898,8 @@ perf_query_end;
                 if deal_sou_add_arr(i).result = 2
                 then continue;
                 end if;
-
+                -- заполняем временные записи, потом перенесем в коллекцию 
+                
                 main_tmp := deal_sou_arr(i);
                 add_tmp  := deal_sou_add_arr(i);
 
@@ -3248,6 +3369,10 @@ perf_query_end;
         l_counter   number := 0; -- счетчик обработанных строк
         l_err_counter   number := 0; -- счетчик ошибок
 
+        --replobj_rec_arr             replobj_rec_arr_type;
+        --replobj_rec_inx_arr         replobj_rec_inx_arr_type; -- индексная коллекция
+        --replobj_tmp_arr             replobj_tmp_arr_type;
+
         -- выявлены проблемы с записью. Логируем ошибку и исключаем запись из обработки.
         procedure pr_exclude(p_errnum number, p_id number, p_text varchar2, p_counter number, p_action number, p_silent boolean := false)
             is
@@ -3265,7 +3390,8 @@ perf_query_end;
                 end if;
 
                 -- исключаем элемент
-                demand_sou_arr.delete(p_counter);
+                --demand_sou_arr.delete(p_counter);
+                demand_sou_arr(p_counter).t_replstate := 2;
                 l_err_counter := l_err_counter + 1;
                 deb('Завершена процедура  PR_EXCLUDE', p_level=>5);
             end pr_exclude;
@@ -3366,7 +3492,6 @@ perf_query_end;
 
                 -- собственно, платеж
                 if p_action > 1 then
-                    deb('!!!!!!! ' || main_tmp.T_DEMANDID);
                     replobj_add( c_OBJTYPE_PAYMENT, main_tmp.T_DEMANDID);
                 end if;
 
@@ -3385,6 +3510,10 @@ perf_query_end;
             deb('Цикл 2 - проверка качества данных');
             for i in 1..demand_sou_arr.count
             loop
+                if demand_sou_arr(i).t_replstate = 2
+                then continue;
+                end if;
+                
                 main_tmp    := demand_sou_arr(i);
                 error_found := false;
 
@@ -3419,7 +3548,7 @@ perf_query_end;
                 if not error_found then
                     tick_by_demand_arr( tick_by_demand_arr.count ) := demand_tmp.tgt_docid;
                 else
-                    demand_sou_arr(i).t_replstate := 2; -- ошибка в параметрах!
+                    pr_exclude(207, main_tmp.t_demandid, 'Ошибка в параметрах платежа', i, p_action);
                 end if;
 
             end loop; -- конец цикла 2
@@ -3430,6 +3559,7 @@ perf_query_end;
             select * bulk collect into ddl_tick_dbt_arr_tmp from ddl_tick_dbt where t_dealid in (select column_value from table(tick_by_demand_arr));
             deb('Загружено #1 уникальных тикетов сделок', sql%rowcount);
             perf_query_end;
+            
             -- Перегружаем fiid из тикетов в коллекцию, индексированную сделкой
             for j in 1..ddl_tick_dbt_arr_tmp.count
             loop
@@ -3445,11 +3575,11 @@ perf_query_end;
             deb('Цикл 3 - назначение валюты платежа (для бумаг) и передача платежа в add_demand');
             for i in 1..demand_sou_arr.count
             loop
-                main_tmp    := demand_sou_arr(i);
-
                 if main_tmp.t_replstate = 2
                 then continue;
                 end if;
+                
+                main_tmp  := demand_sou_arr(i);
 
                 demand_tmp.tgt_demandid :=  replobj_get(c_OBJTYPE_PAYMENT, main_tmp.t_demandid).dest_id;
                 demand_tmp.tgt_docid    :=  replobj_get(c_OBJTYPE_DEAL, main_tmp.t_dealid).dest_id;
@@ -3903,6 +4033,7 @@ perf_query_end;
         deb('Статистика по памяти: ошибка, нет привилегий на v$sesstat и v$statname');
     end;
     
+        
     
 begin
     deb('=== Выполняется инициирующая загрузка в пакете ===');
@@ -3914,6 +4045,18 @@ begin
     my_SID := to_number(SYS_CONTEXT('USERENV','SESSIONID'));
     
     deb('SID = #1', my_SID); 
+    
+    -- создание или переиспользование вспомогательных таблиц
+    begin
+        execute immediate 'create table dtx_error_records(t_instancedate date, t_action number(5), t_objecttype number(5), t_objectid number(15), t_errorcode number(5), t_level number(3)) ';
+    exception when others then null;
+    end;
+
+    begin
+        execute immediate 'create table dtxdeal_tmp nologging for exchange with table dtxdeal_dbt';
+    exception when others then null;
+    end;
+
 
     -- заполнение списка подразделений
     for i in (select t_code, t_partyid from ddp_dep_dbt)
