@@ -186,8 +186,14 @@ is
     demand_add_arr      demand_add_arr_type; 
                        
                                       
+    -- Функции для вызова из SQL
     function GetDealKind( p_kind number, p_avoirissid number, p_market number, p_isbasket char, p_isksu char)    return number DETERMINISTIC;
-                    
+    function GetIsQuoted(p_fi number, p_date date) return char DETERMINISTIC;
+    function GetIsKSU(p_fi number) return char DETERMINISTIC;
+    function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC;    
+    procedure load_deals_by_period(p_startdate date, p_enddate date default null);
+
+                   
     -- процедура добавления платежа в кэш DEMAND_RQ_ARR
     procedure   add_demand (p_demand   demand_type);
     -- процедура записи платежей из кэша в БД. Используется в load_demands и load_deals

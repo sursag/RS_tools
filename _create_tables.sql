@@ -56,7 +56,7 @@ CREATE TABLE DTX_ERROR_DBT
 
 
 
-CREATE TABLE GEB_20210823_TST.DTXDEAL_TMP
+CREATE TABLE DTXDEAL_TMP
 (
   T_DEALID                  NUMBER(15)          NOT NULL,
   T_INSTANCEDATE            DATE                NOT NULL,
@@ -139,6 +139,7 @@ CREATE TABLE GEB_20210823_TST.DTXDEAL_TMP
   TGT_PAYMCUR               NUMBER(15),
   TGT_CURRENCYID            NUMBER(15),
   TGT_AVOIRISSID            NUMBER(15),
+  TGT_AVOIRKIND             NUMBER(3),
   TGT_MARKETID              NUMBER(15),
   TGT_SECTOR                NUMBER(15),
   TGT_BROKERID              NUMBER(15),
@@ -159,10 +160,31 @@ CREATE TABLE GEB_20210823_TST.DTXDEAL_TMP
   TGT_ISLOAN                CHAR(1 CHAR),
   TGT_ISREPO                CHAR(1 CHAR),
   TGT_ISBASKET              CHAR(1 CHAR),
-  TGT_EXISTBACK             CHAR(1 CHAR),
   TGT_ISLOANTOREPO          CHAR(1 CHAR),
   TGT_COUNTRY               VARCHAR2(3 CHAR),
   TGT_PARTYID               NUMBER(15),
   TGT_NKDFIID               NUMBER(15),
-  TGT_OBJTYPE               NUMBER(3)
-) compress nologging;
+  TGT_OBJTYPE               NUMBER(3),
+  TGT_PRICE                 NUMBER(32,12),
+  TGT_MATURITY              DATE,
+  TGT_EXPIRY                DATE,
+  TGT_MATURITYISPRINCIPAL   CHAR(1 CHAR),
+  TGT_MATURITY2             DATE,
+  TGT_EXPIRY2               DATE,
+  TGT_MATURITYISPRINCIPAL2  CHAR(1 CHAR),
+  TGT_FORMULA               NUMBER(3),
+  TGT_PORTFOLIOID_2         NUMBER(2),
+  TGT_CURNOM                NUMBER,
+  TGT_RELATIVEPRICE         CHAR(1 CHAR),
+  TGT_RECEIPTAMOUNT         NUMBER,
+  TGT_ISBOND                CHAR(1 CHAR),
+  TGT_ISQUOTED              CHAR(1 CHAR),
+  TGT_ISKSU                 CHAR(1 CHAR)
+)
+TABLESPACE TST compress nologging;
+
+
+create table dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));
+
+create table dtx_querylog_dbt(t_starttime date, t_duration number(5), t_id number(5), T_OBJECTYPE number(2), t_set number(5), t_num number(5), t_session number(10), t_sessdetail number(10), t_result char(1 char), t_totalrows number(10), t_execrows number(10));
+
