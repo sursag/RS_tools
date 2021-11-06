@@ -1,5 +1,6 @@
 begin   -- 3.5 минуты
     load_rss.load_deals( date'2021-08-01', 1);
+    load_rss.load_deals_by_period( date'2021-08-01');
 end;
 
 begin  -- 7 минут

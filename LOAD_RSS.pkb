@@ -15,6 +15,8 @@ is
     deb_flag             number := 0; -- для процедуры логирования. Уровень вложенности записей логов, для отсутпов
 
 
+    write_query_log_start date; -- переменная для процедуры write_query_log
+
     -- коды стран из таблицы dcountry_dbt. Индекс - t_codenum3, значение - t_codelat3
     type country_arr_type is table of varchar2(3) index by varchar2(3);
     country_arr  country_arr_type;
@@ -31,10 +33,27 @@ is
     tmp_num_perf number;
     deb_start_timestamp timestamp;
 
-    
-    procedure write_memory_stat; -- находится в конце пакета
-    ----------------------------------------------------------------------------
 
+
+    procedure WRITE_LOG_START
+    is 
+    begin
+        write_query_log_start := sysdate;
+    end WRITE_LOG_START;
+
+
+    procedure WRITE_LOG_FINISH(L_TEXT varchar2, L_OBJECTYPE number, L_SET number := 0, L_NUM number := 0)
+    is
+    pragma autonomous_transaction;
+    l_cou number;
+    begin
+        l_cou := sql%rowcount;
+        insert into dtx_querylog_dbt(T_STARTTIME, T_DURATION, T_TEXT, T_OBJECTYPE, T_SET, T_NUM, T_SESSION, T_SESSDETAIL, T_EXECROWS)
+        values (write_query_log_start, round((sysdate-write_query_log_start)*24*60*60), L_TEXT, L_OBJECTYPE, L_SET, L_NUM, g_SESSION_ID, g_SESS_DETAIL_ID, l_cou);
+        commit;
+    end WRITE_LOG_FINISH;    
+
+    
     -- регистрирует запись о начале работы в журнале
     procedure add_record_in_journal( p_proc varchar2, p_instancedate date, p_action number)
     is
@@ -134,359 +153,7 @@ is
         deb('Завершена процедура UPLOAD_SUBJECT_TYPES');
     end  upload_subject_types;
 
-    -- примечание к объекту добавляем в массив, чтобы потом записать в базу сразу порцию.
-    procedure add_note( p_objtype number, p_objectid  number, p_kind number, p_value varchar2, p_date  date)
-    is
-            note_tmp    note_type;
-            l_struniid  varchar2(50);
-            l_objtype   number;
-    begin
 
-            deb('add_note: p_objtype = ' || p_objtype || ', p_objectid = ' || p_objectid || ', p_kind = ' || p_kind || ', p_value = ' || p_value || ', p_date = ' || p_date , p_level=>5);
-
-            case p_objtype
-            when 80 then    l_struniid  := lpad( p_objectid, 10, '0');
-                            l_objtype   := 101;
-            when 90 then    l_struniid  := lpad( p_objectid, 10, '0');
-                            l_objtype   := 993;
-            else l_struniid := null;
-            end case;
-            note_tmp.r_objtype  := l_objtype;
-            note_tmp.r_struniid := l_struniid;
-            note_tmp.r_kind     := p_kind;
-            note_tmp.r_value    := p_value;
-            note_tmp.r_date     := p_date;
-
-            note_arr( note_arr.count ) := note_tmp;
-    end add_note;
-
-    -- примечание к объекту добавляем в массив, чтобы потом записать в базу сразу порцию.
-    procedure add_categ( p_objtype number, p_objectid  number, p_kind number, p_value varchar2, p_date  date)
-        is
-            categ_tmp    categ_type;
-            p_struniid  varchar2(50);
-        begin
-            case p_objtype
-            when 101 then p_struniid := lpad( p_objectid, '0', 10);
-            else p_struniid := null;
-            end case;
-
-            categ_tmp.r_objtype  := p_objtype;
-            categ_tmp.r_struniid := p_struniid;
-            categ_tmp.r_kind     := p_kind;
-            categ_tmp.r_value    := p_value;
-            categ_tmp.r_date     := p_date;
-
-            categ_arr( categ_arr.count ) := categ_tmp;
-        end add_categ;
-
-    -- все категории объектов из буфера записываются в базу. Буфер очищается.
-    procedure write_categs
-    is
-    begin
-        deb('Запущена процедура WRITE_CATEGS');
-        deb('Количество записей в буфере - #1', categ_arr.count);
-        forall i in indices of categ_arr
-            delete from dobjatcor_dbt
-            where t_objecttype=categ_arr(i).r_objtype and t_groupid=categ_arr(i).r_kind and t_object=categ_arr(i).r_struniid;
-
-        forall i in indices of categ_arr
-            insert /*+ append_values */ into dobjatcor_dbt(t_objecttype, t_groupid, t_attrid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE)
-            select t_objecttype, t_groupid, t_attrid,  categ_arr(i).r_struniid, chr(88), g_oper, date'0001-01-01', date'9999-12-31' from dobjattr_dbt
-            where t_name = categ_arr(i).r_value and t_groupid=categ_arr(i).r_kind and t_objecttype=categ_arr(i).r_objtype;
-
-        deb('Выполнена вставка в DOBJATCOR_DBT, вставлено #1 записей, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT);
-
-        commit;
-        categ_arr.delete;
-        DBMS_SESSION.FREE_UNUSED_USER_MEMORY;
-        deb('Завершена процедура WRITE_CATEGS');
-    --exception when others 
-    --then
-    --    deb('Ошибка записи категорий объектов в процедуре WRITE_CATEGS');        
-    end write_categs;
-
-
-    -- все примечания к объектам из буфера записываются в базу. Буфер очищается.
-    procedure write_notes
-    is
-        note_tmp note_type;
-    begin
-        deb('Запущена процедура WRITE_NOTES');
-        deb('Количество записей в буфере - #1', note_arr.count);
-
-        for i in nvl(note_arr.first,0) .. nvl(note_arr.last,-1)
-        loop
-            deb('Индекс ' || i || ', r_objtype = ' || note_arr(i).r_objtype || ', r_struniid = ' || note_arr(i).r_struniid || ', r_kind = ' || note_arr(i).r_kind || ', r_date = ' || note_arr(i).r_date  || ', r_value = ' || note_arr(i).r_value, p_level=>5);
-        end loop;
-
-        forall i in indices of note_arr 
-                delete from dnotetext_dbt
-                where T_OBJECTTYPE=note_arr(i).r_objtype and T_DOCUMENTID=note_arr(i).r_struniid and T_NOTEKIND=note_arr(i).r_kind;
-
-        deb('Выполнено удаление из DNOTETEXT_DBT');
-
-        forall i in indices of note_arr
-                insert /*+ append_values */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-                values( note_arr(i).r_objtype, note_arr(i).r_struniid, note_arr(i).r_kind, g_oper, note_arr(i).r_date, date'0001-01-01', note_arr(i).r_value, date'4000-01-01');
-
-        commit;
-
-        deb('Выполнена вставка в DNOTETEXT_DBT, вставлено #1 записей, количество ошибок - #2', SQL%ROWCOUNT, SQL%BULK_EXCEPTIONS.COUNT);
-
-        commit;
-        note_arr.delete;
-        DBMS_SESSION.FREE_UNUSED_USER_MEMORY;
-        deb('Завершена процедура WRITE_NOTES');
-    end write_notes;
-
-
-    -- вызывается при обработке вставки/изменения сделки. Добавляет все категории/примечания в буферы
-    procedure add_all_notes_categs(main_tmp DTXDEAL_DBT%ROWTYPE, add_tmp deal_sou_add_type)
-    is
-        l_SetCatID number;
-        l_SetCatSTR varchar2(50);
-    begin
-        deb('Запущена процедура ADD_ALL_NOTES_CATEGS', p_level=>5);
-
-        if add_tmp.tgt_dealid is null
-        then
-            deb('Ошибка! add_tmp.tgt_dealid == NULL');
-            return;
-        end if;
-
-        /*дополнительные условия по сделке*/
-        if main_tmp.t_conditions is not null
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 101, main_tmp.t_conditions, main_tmp.t_instancedate);
-        end if;
-
-        /*Код на бирже*/
-        if main_tmp.T_MARKETCODE is not null
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 102, main_tmp.T_MARKETCODE, main_tmp.t_instancedate);
-        end if;
-
-        /*Код у контрагента*/
-        if main_tmp.T_PARTYCODE is not null
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 103, main_tmp.T_PARTYCODE, main_tmp.t_instancedate);
-        end if;
-
-        /* Расчетная цена (23) */
-        if main_tmp.T_PRICE_CALC <> 0
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 23, main_tmp.T_PRICE_CALC, main_tmp.t_instancedate);
-        end if;
-
-        /* Отклонение от расчетной цены (27) */
-        if main_tmp.T_PRICE_CALC_DEF > 0
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 27, main_tmp.T_PRICE_CALC_DEF, main_tmp.t_instancedate);
-        end if;
-
-        /* Единица измерения расчетной цены (28) */
-        if main_tmp.T_PRICE_CALC_VAL > 0
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 28, main_tmp.T_PRICE_CALC_VAL, main_tmp.t_instancedate);
-        end if;
-
-        /* Примечание Расходы по оценке рыночной стоимости (116)*/
-        if main_tmp.T_PRICE_CALC_OUTLAY > 0
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 116, main_tmp.T_PRICE_CALC_OUTLAY, main_tmp.t_instancedate);
-        end if;
-
-        /* Комментарий к допконтролю (26)*/
-        if main_tmp.T_DOPCONTROL_NOTE is not null
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 26, main_tmp.T_DOPCONTROL_NOTE, main_tmp.t_instancedate);
-        end if;
-
-        /* Комментарий к способу определения РЦ (29)*/
-        if main_tmp.T_PRICE_CALC_MET_NOTE is not null
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 29, main_tmp.T_PRICE_CALC_MET_NOTE, main_tmp.t_instancedate);
-        end if;
-
-        /* Валюта платежа*/
-        if main_tmp.T_PAYMCUR > 0 and currency_iso_arr.exists(main_tmp.T_PAYMCUR)
-        then
-            add_note( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 112, currency_iso_arr(main_tmp.T_PAYMCUR), main_tmp.t_instancedate);
-        end if;
-
-        -------------------------------------------------------------------------------------------------------------------
-        -- Теперь категории
-
-        -- Установка значения категории Сделка подлежит дополнительному контролю ( 32 )
-        if main_tmp.T_DOPCONTROL > 0 and add_tmp.tgt_BofficeKind in (c_DL_SECURITYDOC, c_DL_RETIREMENT)
-        then
-            l_SetCatID :=
-            case main_tmp.T_DOPCONTROL
-            when  1 then 1
-            when  2 then 2
-            when  3 then 3
-            when  4 then 4
-            when  5 then 5
-            when  6 then 6
-            when  7 then 9
-            when  8 then 91
-            when  9 then 92
-            when  10 then 94
-            when  11 then 95
-            when  12 then 96
-            when  13 then 13
-            when  14 then 23
-            when  15 then 25
-            when  16 then 7
-            when  17 then 8
-            when  18 then 38
-            when  19 then 938
-            when  20 then 93
-            when  21 then 913
-            when  22 then 925
-            else main_tmp.T_DOPCONTROL
-            end;
-
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 32, l_SetCatID, main_tmp.t_instancedate);
-        end if;
-
-        -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
-        if main_tmp.T_COSTCHANGEONCOMP = chr(0)
-        then
-            l_SetCatID := 0;
-        else
-            l_SetCatID := 1;
-        end if;
-        add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 21, l_SetCatID, main_tmp.t_instancedate);
-
-
-        -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
-        if main_tmp.T_COSTCHANGEONAMOR = chr(0)
-        then
-            l_SetCatID := 0;
-        else
-            l_SetCatID := 1;
-        end if;
-        add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 22, l_SetCatID, main_tmp.t_instancedate);
-
-
-        -- Установка значения категории Вид сделок ФИСС ( 33 )
-        if main_tmp.T_FISSKIND > 0
-        then
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 33, main_tmp.T_FISSKIND, main_tmp.t_instancedate);
-        end if;
-
-
-        -- Установка значения категории Способ определения РЦ ( 34 )
-        if main_tmp.T_PRICE_CALC_METHOD > 0
-        then
-            l_SetCatSTR := case main_tmp.T_PRICE_CALC_METHOD
-                      when 1  then '10-00'
-                      when 2  then '10-80'
-                      when 3  then '11-00'
-                      when 4  then '11-01'
-                      when 5  then '12-50'
-                      when 6  then '12-51'
-                      when 7  then '12-80'
-                      when 8  then '12-81'
-                      when 9  then '19-00'
-                      when 10 then '20-80'
-                      when 11 then '21-00'
-                      when 12 then '21-01'
-                      when 13 then '22-10'
-                      when 14 then '22-11'
-                      when 15 then '22-20'
-                      when 16 then '22-21'
-                      when 17 then '22-30'
-                      when 18 then '22-31'
-                      when 19 then '22-40'
-                      when 20 then '22-41'
-                      when 21 then '22-50'
-                      when 22 then '22-51'
-                      when 23 then '22-60'
-                      when 24 then '22-61'
-                      when 25 then '22-70'
-                      when 26 then '22-71'
-                      when 27 then '22-80'
-                      when 28 then '22-81'
-                      when 29 then '29-00'
-                      when 30 then '31-00'
-                      when 31 then '31-01'
-                      when 32 then '32-50'
-                      when 33 then '32-51'
-                      when 34 then '99-00'
-                      when 35 then '11-80'
-                      when 36 then '11-81'
-                      else 'null'
-                      end;
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 34, l_SetCatSTR, main_tmp.t_instancedate);
-        end if;
-
-        -- Признак урегулирования требований по ст.282 НК РФ.
-        if main_tmp.T_ADJUSTMENT is not null
-        then
-            if main_tmp.T_ADJUSTMENT = chr(0) then
-                l_SetCatSTR := 0;
-            else
-                l_SetCatSTR := 1;
-            end if;
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 19, l_SetCatSTR, main_tmp.t_instancedate);
-        end if;
-
-        -- Признак ограничения прав покупателя по сделке РЕПО - "Блокировка ц/б"
-        if main_tmp.T_LIMIT is not null
-        then
-            if main_tmp.T_LIMIT = chr(0) then
-                l_SetCatSTR := 0;
-            else
-                l_SetCatSTR := 1;
-            end if;
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 103, l_SetCatSTR, main_tmp.t_instancedate);
-        end if;
-
-        -- Признак изменения ставки - "Плавающая ставка"
-        if main_tmp.T_CHRATE is not null
-        then
-            if main_tmp.T_CHRATE = chr(0) then
-                l_SetCatSTR := 0;
-            else
-                l_SetCatSTR := 1;
-            end if;
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 26, l_SetCatSTR, main_tmp.t_instancedate);
-        end if;
-
-        -- Признак изменения ставки - "Принадлежность дивидендов"
-        if main_tmp.T_DIV is not null
-        then
-            if main_tmp.T_DIV = chr(0) then
-                l_SetCatSTR := 0;
-            else
-                l_SetCatSTR := 1;
-            end if;
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 25, l_SetCatSTR, main_tmp.t_instancedate);
-        end if;
-
-        -- Признак исполнения сделки в любой день
-        if main_tmp.T_ATANYDAY is not null
-        then
-            if main_tmp.T_ATANYDAY = chr(0) then
-                l_SetCatSTR := 0;
-            else
-                l_SetCatSTR := 1;
-            end if;
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 20, l_SetCatSTR, main_tmp.t_instancedate);
-        end if;
-
-        -- "Место заключения сделки"
-        if main_tmp.T_COUNTRY is not null and add_tmp.tgt_bofficekind=c_DL_SECURITYDOC and main_tmp.T_COUNTRY <> 158
-        then
-            add_categ( c_OBJTYPE_DEAL, add_tmp.tgt_dealid, 105, main_tmp.T_COUNTRY, main_tmp.t_instancedate);
-        end if;
-
-        deb('Завершена процедура ADD_ALL_NOTES_CATEGS', p_level=>5);
-
-    end add_all_notes_categs;
 
 
     procedure deb_empty(p_line char := null) -- пустая строка в поток отладочных комментариев
@@ -1431,24 +1098,27 @@ is
 
 
     -- процедура создает снимок по сделкам из DTXDEAL_DBT в таблицу DTXDEAL_TMP
-    procedure deals_take_snapshot( p_startdate date, p_enddate date)
+    procedure deals_create_snapshot( p_startdate date, p_enddate date)
     is 
     begin
-        deb('Запущена процедура DEALS_TAKE_SNAPSHOT c ' || to_char(p_startdate, 'dd.mm.yyyy hh24:mi') || ' по '  || to_char(p_enddate, 'dd.mm.yyyy hh24:mi'));
+        deb('Запущена процедура DEALS_CREATE_SNAPSHOT c ' || to_char(p_startdate, 'dd.mm.yyyy hh24:mi') || ' по '  || to_char(p_enddate, 'dd.mm.yyyy hh24:mi'));
         -- получаем снимок из dtxdeal_dbt в dtxdeal_tmp - только тот набор записей, который необходимо реплицировать. Записываем его в таблицу, имеющею пустые поля для индетификаторов целевой системы.
         deb('Очистка таблицы DTXDEAL_TMP');
         -- таблица очищается в начале, а не в конце, чтобы данные между вызовами процедуры были доступны для анализа
 
         deb('Очистка таблицы DTXDEAL_TMP и удаление индексов');
-        begin
-            execute immediate 'truncate table dtxdeal_tmp';
-            execute immediate 'DROP INDEX BMPI_ACTION';
-            execute immediate 'DROP INDEX BMPI_KIND';
-            execute immediate 'DROP INDEX BMPI_ISREPO';
-            execute immediate 'DROP INDEX I_DEALID';
-        exception when others then
-            deb('Ошибка при удалении индексов на DTXDEAL_TMP');
-        end;
+        WRITE_LOG_START;
+        execute immediate 'truncate table dtxdeal_tmp';
+        
+            for j in (select index_name from user_indexes where table_name='DTXDEAL_TMP')
+            loop
+                begin        
+                    execute immediate 'DROP INDEX ' || j.index_name;
+                exception when others 
+                then
+                    deb('Ошибка при удалении индекса ' || j.index_name);
+                end;
+            end loop;
         
         deb('Создаем снимок с ' || to_char(p_startdate,'dd.mm.yyyy') || ' по ' || to_char(p_enddate,'dd.mm.yyyy'));
         -- просто переливаем данные с replstate=0 за нужный instancedate
@@ -1458,60 +1128,98 @@ is
             from dtxdeal_dbt where t_instancedate between :1 and :2 and t_replstate=0' using p_startdate, p_enddate;
         deb('Загружено в снимок #1 строк', sql%rowcount);
         
+        WRITE_LOG_FINISH('Создаем снимок по сделкам',80);
         commit;
         
+        deb('Завершена процедура DEALS_TAKE_SNAPSHOT');
+    end deals_create_snapshot;
+    
+    
+    -- процедура записывает ошибки в лог из таблцы ошибок dtx_error_dbt
+    -- только те, которые еще не были запсаны
+    procedure write_errors_into_log
+    is
+    begin
+        deb('Запущена процедура WRITE_ERRORS_INTO_LOG');
+        WRITE_LOG_START;
+        insert /*+ append */ into dtxloadlog_dbt(T_MSGTIME, T_MSGCODE, T_SEVERITY, T_OBJTYPE, T_OBJECTID, T_SUBOBJNUM, T_FIELD, T_MESSAGE, T_INSTANCEDATE)
+        select er.T_TIMESTAMP, er.T_ERRORCODE, 1, er.T_OBJECTTYPE, er.T_OBJECTID, 0, '', erk.T_DESC,  ss.T_INSTANCEDATE
+        from dtx_error_dbt er 
+        join DTX_SESS_DETAIL_DBT ss on (er.T_SESSID=ss.T_SESSID and er.T_DETAILID=ss.T_DETAILID and er.T_SESSID=g_session_id and er.T_DETAILID=g_SESS_DETAIL_ID) 
+        left join dtx_errorkinds_dbt erk on (er.t_errorcode=erk.t_code)
+        where er.is_logged is null; 
+        
+        -- проставим признак записи на записи в таблице ошибок. Теперь можно повторно вызывать процедуру записи в течение сессии, ошибкии в логе не будут дублироваться
+        update dtx_error_dbt set is_logged=chr(88) where rowid in (select rowid from dtx_error_dbt where is_logged is null and t_sessid=G_SESSION_ID and T_DETAILID=g_SESS_DETAIL_ID);
+        WRITE_LOG_FINISH('Переносим ошибки в общий лог', 0);
+        commit;         
+        deb('Завершена процедура WRITE_ERRORS_INTO_LOG');
+    end write_errors_into_log;
+
+    -- процедура создает индексы на снимке и считает статистику
+    procedure deals_create_indexes
+    is 
+    begin
+        deb('Запущена процедура DEALS_CREATE_INDEXES');
+        WRITE_LOG_START;
         deb('Создаем индексы на снимке');
         begin
-            execute immediate 'CREATE BITMAP INDEX BMPI_ACTION ON GEB_20210823_TST.DTXDEAL_TMP(T_ACTION)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_KIND ON GEB_20210823_TST.DTXDEAL_TMP(T_KIND)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_ISREPO ON GEB_20210823_TST.DTXDEAL_TMP(TGT_ISREPO)';
-            execute immediate 'CREATE INDEX I_DEALID ON GEB_20210823_TST.DTXDEAL_TMP(T_DEALID)';
+            execute immediate 'CREATE INDEX I_DEALID ON DTXDEAL_TMP(T_DEALID)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_ACTION ON DTXDEAL_TMP(T_ACTION)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_KIND ON DTXDEAL_TMP(T_KIND)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_REPLSTATE ON DTXDEAL_TMP(T_REPLSTATE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_ISREPO ON DTXDEAL_TMP(TGT_ISREPO)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_COSTCHANGEONCOMP ON DTXDEAL_TMP(T_COSTCHANGEONCOMP)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_COSTCHANGE ON DTXDEAL_TMP(T_COSTCHANGE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_COSTCHANGEONAMOR ON DTXDEAL_TMP(T_COSTCHANGEONAMOR)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_ADJUSTMENT ON DTXDEAL_TMP(T_ADJUSTMENT)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_NEEDDEMAND ON DTXDEAL_TMP(T_NEEDDEMAND)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_NEEDDEMAND2 ON DTXDEAL_TMP(T_NEEDDEMAND2)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_ATANYDAY ON DTXDEAL_TMP(T_ATANYDAY)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_LIMIT ON DTXDEAL_TMP(T_LIMIT)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_CHRATE ON DTXDEAL_TMP(T_CHRATE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DIV ON DTXDEAL_TMP(T_DIV)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_ISBASKET ON DTXDEAL_TMP(T_ISBASKET)';
         exception when others then
             deb('Ошибка при создании индексов на снимке');
-            return; 
         end;
         
         deb('Считаем статистику на снимке');
         dbms_stats.gather_table_stats(user, 'DTXDEAL_TMP', cascade=>true);
+        
+        WRITE_LOG_FINISH('Создаем индексы на снимке', 80);    
+        
         deb('Завершена процедура DEALS_TAKE_SNAPSHOT');
-    end deals_take_snapshot;
+    end deals_create_indexes;
+
+
+    
+      
 
 
 
     procedure run_query_set( p_objecttype number, p_set number )
     is 
-        l_start date;
-        l_duration integer;
-            
-        procedure l_write_log(L_STARTTIME date, L_DURATION number, L_ID number, L_OBJECTYPE number, L_SET number, L_NUM number, L_SESSION number, L_SESSDETAIL number, L_RESULT char, L_EXECROWS number)
-        is
-        pragma autonomous_transaction;
-        begin
-            insert into dtx_querylog_dbt(T_STARTTIME, T_DURATION, T_ID, T_OBJECTYPE, T_SET, T_NUM, T_SESSION, T_SESSDETAIL, T_RESULT, T_EXECROWS)
-            values (L_STARTTIME, L_DURATION, L_ID, L_OBJECTYPE, L_SET, L_NUM, L_SESSION, L_SESSDETAIL, L_RESULT, L_EXECROWS);
-            commit;
-        end l_write_log;            
     begin
         deb('Запущена процедура RUN_QUERY_SET для OBJECTTYPE=#1 и сета #2', p_objecttype, p_set);
         -- выполняем заданный сет запросов
         for q_rec in (select * from dtx_query_dbt where t_objecttype=p_objecttype and t_set=p_set and t_in_use='X' order by t_num)
         loop
                 begin
-                    l_start := sysdate;
+                    WRITE_LOG_START;
                     if q_rec.t_use_bind = 'X' then
                         execute immediate q_rec.t_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_screenid;
                     else
                         execute immediate q_rec.t_text;
                     end if;
-                    l_duration := round((sysdate - l_start)*24*60*60);
-                    deb('    ' || q_rec.t_name || '.  #1 записей, #2 секунд', sql%rowcount, l_duration);
-                    l_write_log( l_start, l_duration, q_rec.T_SCREENID, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM, g_SESSION_ID, g_SESS_DETAIL_ID, 'S', sql%rowcount);
+                    deb('    ' || q_rec.t_name || '.  #1 записей', sql%rowcount);
+                    WRITE_LOG_FINISH( q_rec.T_NAME, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
                     commit; 
                 exception
                 when others then
                     rollback;
-                    deb('Ошибка в запросе id=#1, номер #2 в сете #3', q_rec.T_SCREENID, q_rec.T_NUM, q_rec.T_SET);
-                    l_write_log( l_start, l_duration, q_rec.T_SCREENID, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM, g_SESSION_ID, g_SESS_DETAIL_ID, 'E', 0);
+                    deb('Ошибка в запросе номер #2 в сете #3', q_rec.T_NUM, q_rec.T_SET);
+                    WRITE_LOG_FINISH( 'Ошибка: '  || q_rec.T_NAME, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
                     raise;
                 end; 
         end loop;
@@ -1543,10 +1251,15 @@ is
         
         run_query_set(p_objecttype, 1);
        
+
         deb('Второй сет запросов. Заполнение таблицы ошибок');
         -- Второй сет запросов, проверяем заполнение полей, определяем ошибки
-        
+       
         run_query_set(p_objecttype, 2);
+
+        if p_objecttype=80 then
+            deals_create_indexes;
+        end if;
         
         -- отметим найденные ошибки. 
         case p_objecttype
@@ -1574,39 +1287,22 @@ is
 
 
     -- формирует записи в целевой системе на основе таблицы снимка
-    procedure deals_create_records( p_date date )
+    procedure deals_create_records
     is
     begin
         deb('Запущена процедура DEALS_CREATE_RECORDS');
         
+        -- Обработка вставок
+        WRITE_LOG_START;
         deb('Заполнение DDL_TICK_DBT (t_action=1)');
         insert /*+ append */ into ddl_tick_dbt(
-                T_DEALID, T_BOFFICEKIND, T_DEALTYPE, T_DEALGROUP, T_TRADESYSTEM, 
-                T_DEALCODE, T_DEALCODETS, T_TYPEDOC, T_USERTYPEDOC, T_PARTYID, 
-                T_BROKERID, T_CLIENTID, T_TRADERID, T_DEPOSITID, T_MARKETID, 
-                T_INDOCID, T_DEALDATE, T_REGDATE, T_DEALSTATUS, T_NUMBERPACK, 
-                T_DEPARTMENT, T_OPER, T_ORIGINID, T_EXTERNID, T_FLAG1, 
-                T_FLAG2, T_FLAG3, T_FLAG4, T_FLAG5, T_USERFIELD1, 
-                T_USERFIELD2, T_USERFIELD3, T_USERFIELD4, T_COMMENT, T_CLOSEDATE, 
-                T_SHIELD, T_SHIELDSIZE, T_ISPERCENT, T_SCALE, T_POINTS, 
-                T_REVRATE, T_COLLATERAL, T_DEALTIME, T_PORTFOLIOID, T_BUNDLE, 
-                T_CBRISKGROUP, T_RISKGROUP, T_ATTRIBUTES, T_PRODUCT, T_NETTING, 
-                T_DEALCODEPS, T_CONFTPID, T_LINKCHANNEL, T_NUMBER_COUPON, T_MARKETOFFICEID, 
-                T_CLIENTCONTRID, T_BROKERCONTRID, T_INDOCCODE, T_PREOUTLAY, T_PREOUTLAYFIID, 
-                T_GROUNDID, T_BUYGOAL, T_COMMDATE, T_PAYMENTSMETHOD, T_FIXSUM, 
-                T_NUMBER_PARTLY, T_CHANGEDATE, T_INSTANCE, T_CHANGEKIND, T_PORTFOLIOID_2, 
-                T_ISPARTYCLIENT, T_PARTYCONTRID, T_BRANCH, T_AVOIRKIND, T_OFBU, 
-                T_MARKETSCHEMEID, T_DEPSETID, T_RETURNINCOMEKIND, T_REQUESTID, T_BLOCKED, 
-                T_COUNTRY, T_PFI, T_ISINSTANCY, T_GENAGRID, T_PARENTID, 
-                T_ISNETTING, T_VERSION, T_CARRYWRT, T_COUPONNDFL, T_PROGNOS, 
-                T_ISTRADEFINANCE, T_SECTOR, T_INCLUDE_DAY, T_AUTOCLOSE, T_OPENDATE, 
-                T_KINDDEALPARTYCLIENT, T_CURDEAL, T_TAXHANDLE, T_CURPAY, T_CURGET, 
-                T_TAXOWNBEGDATE, T_DISCONT, T_FACTRECEIVERID, T_ISCONFIRMED, T_ISREADY, 
-                T_SUMPAY, T_NEGATIVERATE, T_ASSIGNMENT, T_WITHPERCENT, T_LIMITCUR, 
-                T_DEBTLIMIT, T_ISSUANCELIMIT, T_TAX_AMOUNT, T_CREDIT_TAX_AMOUNT, T_CREDIT_TAX_CUR, 
-                T_CREDIT_TAX_TERM, T_PLACEMENT, T_OFFER, T_FLAGTYPEDEAL, T_CASHDECISION, 
-                T_ISPFI, T_ADJDATETYPE, T_SUBORDINATEDDATE, T_CAPITALNOTINCLUDED, T_ISSPOT, 
-                T_CALCPFI, T_PAYMAGENT, T_AUTOPLACEMENT)
+                T_DEALID, T_BOFFICEKIND, T_DEALTYPE, T_DEALGROUP, T_TRADESYSTEM, T_DEALCODE, T_DEALCODETS, T_TYPEDOC, T_USERTYPEDOC, T_PARTYID, T_BROKERID, T_CLIENTID, T_TRADERID, T_DEPOSITID, T_MARKETID, T_INDOCID, T_DEALDATE, T_REGDATE, T_DEALSTATUS, T_NUMBERPACK, 
+                T_DEPARTMENT, T_OPER, T_ORIGINID, T_EXTERNID, T_FLAG1, T_FLAG2, T_FLAG3, T_FLAG4, T_FLAG5, T_USERFIELD1, T_USERFIELD2, T_USERFIELD3, T_USERFIELD4, T_COMMENT, T_CLOSEDATE, T_SHIELD, T_SHIELDSIZE, T_ISPERCENT, T_SCALE, T_POINTS, 
+                T_REVRATE, T_COLLATERAL, T_DEALTIME, T_PORTFOLIOID, T_BUNDLE, T_CBRISKGROUP, T_RISKGROUP, T_ATTRIBUTES, T_PRODUCT, T_NETTING, T_DEALCODEPS, T_CONFTPID, T_LINKCHANNEL, T_NUMBER_COUPON, T_MARKETOFFICEID, T_CLIENTCONTRID, T_BROKERCONTRID, T_INDOCCODE, T_PREOUTLAY, T_PREOUTLAYFIID, 
+                T_GROUNDID, T_BUYGOAL, T_COMMDATE, T_PAYMENTSMETHOD, T_FIXSUM, T_NUMBER_PARTLY, T_CHANGEDATE, T_INSTANCE, T_CHANGEKIND, T_PORTFOLIOID_2, T_ISPARTYCLIENT, T_PARTYCONTRID, T_BRANCH, T_AVOIRKIND, T_OFBU, T_MARKETSCHEMEID, T_DEPSETID, T_RETURNINCOMEKIND, T_REQUESTID, T_BLOCKED, 
+                T_COUNTRY, T_PFI, T_ISINSTANCY, T_GENAGRID, T_PARENTID, T_ISNETTING, T_VERSION, T_CARRYWRT, T_COUPONNDFL, T_PROGNOS, T_ISTRADEFINANCE, T_SECTOR, T_INCLUDE_DAY, T_AUTOCLOSE, T_OPENDATE, T_KINDDEALPARTYCLIENT, T_CURDEAL, T_TAXHANDLE, T_CURPAY, T_CURGET, 
+                T_TAXOWNBEGDATE, T_DISCONT, T_FACTRECEIVERID, T_ISCONFIRMED, T_ISREADY, T_SUMPAY, T_NEGATIVERATE, T_ASSIGNMENT, T_WITHPERCENT, T_LIMITCUR, T_DEBTLIMIT, T_ISSUANCELIMIT, T_TAX_AMOUNT, T_CREDIT_TAX_AMOUNT, T_CREDIT_TAX_CUR, T_CREDIT_TAX_TERM, T_PLACEMENT, T_OFFER, T_FLAGTYPEDEAL, T_CASHDECISION, 
+                T_ISPFI, T_ADJDATETYPE, T_SUBORDINATEDDATE, T_CAPITALNOTINCLUDED, T_ISSPOT, T_CALCPFI, T_PAYMAGENT, T_AUTOPLACEMENT)
         select
                 TGT_DEALID /*T_DEALID*/, TGT_BOFFICEKIND /*T_BOFFICEKIND*/, TGT_DEALKIND /*T_DEALTYPE*/, NULL /*T_DEALGROUP*/, NULL /*T_TRADESYSTEM*/, 
                 T_CODE /*T_DEALCODE*/, T_EXTCODE /*T_DEALCODETS*/, t_tskind /*T_TYPEDOC*/, NULL /*T_USERTYPEDOC*/, TGT_PARTYID /*T_PARTYID*/, 
@@ -1635,31 +1331,22 @@ is
                 NULL /*T_ISPFI*/, NULL /*T_ADJDATETYPE*/, NULL /*T_SUBORDINATEDDATE*/, NULL /*T_CAPITALNOTINCLUDED*/, NULL /*T_ISSPOT*/, 
                 NULL /*T_CALCPFI*/, NULL /*T_PAYMAGENT*/, NULL /*T_AUTOPLACEMENT*/
         from dtxdeal_tmp 
-        where t_replstate=0 and t_action=1;    
+        where t_replstate=0 and t_action=1;   
+        WRITE_LOG_FINISH('Заполнение DDL_TICK_DBT (t_action=1)', 80);
         
+        WRITE_LOG_START;
         deb('Заполнение DDL_LEG_DBT по первой части (t_action=1)');
         insert /*+ parallel(4) */ into ddl_leg_dbt(
-                T_DEALID, T_LEGID, T_PFI, T_CFI, 
-                T_START, T_MATURITY, T_EXPIRY, T_PRINCIPAL, T_PRICE, 
-                T_BASIS, T_DURATION, T_PITCH, T_COST, T_MODE, 
-                T_CLOSED, T_REFRATE, T_FACTOR, T_FORMULA, T_VERSION, 
-                T_RESERVE0, T_PERIODNUMBER, T_PERIODTYPE, T_DIFF, T_PAYDAY, 
-                T_LEGKIND, T_SCALE, T_POINT, T_ISCALCUSED, T_LEGNUMBER, 
-                T_RELATIVEPRICE, T_NKD, T_TOTALCOST, T_MATURITYISPRINCIPAL, T_REGISTRAR, 
-                T_INCOMERATE, T_INCOMESCALE, T_INCOMEPOINT, T_INTERESTSTART, T_RECEIPTAMOUNT, 
-                T_REGISTRARCONTRID, T_PRINCIPALBASE, T_PRINCIPALDIFF, T_STARTBASE, T_STARTDIFF, 
-                T_BASE, T_PAYREGTAX, T_RETURNINCOME, T_REJECTDATE, T_DELIVERINGFIID, 
-                T_BITMASK, T_OPERSTATE, T_SUPPLYTIME, T_TABLEPERCENT, T_TYPEPERCENT, 
-                T_CAPTION, T_TYPEDATE, T_COUNTDAY, T_CORRECT, T_PAYFIID, 
-                T_NKDFIID, T_SROK, T_CLIRINGDATE, T_CLIRINGCHANGE, T_DEPOSITID, 
-                T_DVP, T_CLIRINGTIME, T_SESSION, T_D1, T_D2, 
-                T_DMAXPAY, T_QRETURN, T_QRECEIVE, T_SUMINCOME, T_MOVEDATE, 
-                T_NOTICEDURATION, T_PLANMATURITY)
+                T_DEALID, T_LEGID, T_PFI, T_CFI, T_START, T_MATURITY, T_EXPIRY, T_PRINCIPAL, T_PRICE, T_BASIS, T_DURATION, T_PITCH, T_COST, T_MODE, T_CLOSED, T_REFRATE, T_FACTOR, T_FORMULA, T_VERSION, 
+                T_RESERVE0, T_PERIODNUMBER, T_PERIODTYPE, T_DIFF, T_PAYDAY, T_LEGKIND, T_SCALE, T_POINT, T_ISCALCUSED, T_LEGNUMBER, T_RELATIVEPRICE, T_NKD, T_TOTALCOST, T_MATURITYISPRINCIPAL, T_REGISTRAR, 
+                T_INCOMERATE, T_INCOMESCALE, T_INCOMEPOINT, T_INTERESTSTART, T_RECEIPTAMOUNT, T_REGISTRARCONTRID, T_PRINCIPALBASE, T_PRINCIPALDIFF, T_STARTBASE, T_STARTDIFF, T_BASE, T_PAYREGTAX, T_RETURNINCOME, T_REJECTDATE, T_DELIVERINGFIID, 
+                T_BITMASK, T_OPERSTATE, T_SUPPLYTIME, T_TABLEPERCENT, T_TYPEPERCENT, T_CAPTION, T_TYPEDATE, T_COUNTDAY, T_CORRECT, T_PAYFIID, T_NKDFIID, T_SROK, T_CLIRINGDATE, T_CLIRINGCHANGE, T_DEPOSITID, T_DVP, T_CLIRINGTIME, T_SESSION, T_D1, T_D2, 
+                T_DMAXPAY, T_QRETURN, T_QRECEIVE, T_SUMINCOME, T_MOVEDATE, T_NOTICEDURATION, T_PLANMATURITY)
         select
                 TGT_DEALID /*T_DEALID*/, 0 /*T_LEGID*/, TGT_AVOIRISSID /*T_PFI*/, tgt_currencyid /*T_CFI*/, 
                 NULL /*T_START*/, TGT_MATURITY /*T_MATURITY*/, TGT_EXPIRY /*T_EXPIRY*/, t_amount /*T_PRINCIPAL*/, tgt_price /*T_PRICE*/, 
                 case when T_REPOBASE>0 then T_REPOBASE - 1 else 0 end /*T_BASIS*/, NULL /*T_DURATION*/, NULL /*T_PITCH*/, T_COST /*T_COST*/, NULL /*T_MODE*/, 
-                NULL /*T_CLOSED*/, NULL /*T_REFRATE*/, NULL /*T_FACTOR*/, NULL /*T_FORMULA*/, 0 /*T_VERSION*/, 
+                NULL /*T_CLOSED*/, NULL /*T_REFRATE*/, NULL /*T_FACTOR*/, TGT_FORMULA /*T_FORMULA*/, 0 /*T_VERSION*/, 
                 NULL /*T_RESERVE0*/, NULL /*T_PERIODNUMBER*/, NULL /*T_PERIODTYPE*/, NULL /*T_DIFF*/, NULL /*T_PAYDAY*/, 
                 0 /*T_LEGKIND*/, 1 /*T_SCALE*/, 4 /*T_POINT*/, NULL /*T_ISCALCUSED*/, NULL /*T_LEGNUMBER*/, 
                 TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/, T_NKD /*T_NKD*/, T_TOTALCOST /*T_TOTALCOST*/, TGT_MATURITYISPRINCIPAL /*T_MATURITYISPRINCIPAL*/, NULL /*T_REGISTRAR*/, 
@@ -1674,30 +1361,21 @@ is
                 NULL /*T_NOTICEDURATION*/, NULL /*T_PLANMATURITY*/
                 from dtxdeal_tmp 
                 where t_replstate=0 and t_action=1;
+        WRITE_LOG_FINISH('Заполнение DDL_LEG_DBT по первой части (t_action=1)', 80);
         
+        WRITE_LOG_START;
         deb('Заполнение DDL_LEG_DBT по второй части (t_action=1)');
         insert /*+ parallel(4) */ into ddl_leg_dbt(
-                T_DEALID, T_LEGID, T_PFI, T_CFI, 
-                T_START, T_MATURITY, T_EXPIRY, T_PRINCIPAL, T_PRICE, 
-                T_BASIS, T_DURATION, T_PITCH, T_COST, T_MODE, 
-                T_CLOSED, T_REFRATE, T_FACTOR, T_FORMULA, T_VERSION, 
-                T_RESERVE0, T_PERIODNUMBER, T_PERIODTYPE, T_DIFF, T_PAYDAY, 
-                T_LEGKIND, T_SCALE, T_POINT, T_ISCALCUSED, T_LEGNUMBER, 
-                T_RELATIVEPRICE, T_NKD, T_TOTALCOST, T_MATURITYISPRINCIPAL, T_REGISTRAR, 
-                T_INCOMERATE, T_INCOMESCALE, T_INCOMEPOINT, T_INTERESTSTART, T_RECEIPTAMOUNT, 
-                T_REGISTRARCONTRID, T_PRINCIPALBASE, T_PRINCIPALDIFF, T_STARTBASE, T_STARTDIFF, 
-                T_BASE, T_PAYREGTAX, T_RETURNINCOME, T_REJECTDATE, T_DELIVERINGFIID, 
-                T_BITMASK, T_OPERSTATE, T_SUPPLYTIME, T_TABLEPERCENT, T_TYPEPERCENT, 
-                T_CAPTION, T_TYPEDATE, T_COUNTDAY, T_CORRECT, T_PAYFIID, 
-                T_NKDFIID, T_SROK, T_CLIRINGDATE, T_CLIRINGCHANGE, T_DEPOSITID, 
-                T_DVP, T_CLIRINGTIME, T_SESSION, T_D1, T_D2, 
-                T_DMAXPAY, T_QRETURN, T_QRECEIVE, T_SUMINCOME, T_MOVEDATE, 
-                T_NOTICEDURATION, T_PLANMATURITY)
+                T_DEALID, T_LEGID, T_PFI, T_CFI, T_START, T_MATURITY, T_EXPIRY, T_PRINCIPAL, T_PRICE, T_BASIS, T_DURATION, T_PITCH, T_COST, T_MODE, T_CLOSED, T_REFRATE, T_FACTOR, T_FORMULA, T_VERSION, 
+                T_RESERVE0, T_PERIODNUMBER, T_PERIODTYPE, T_DIFF, T_PAYDAY, T_LEGKIND, T_SCALE, T_POINT, T_ISCALCUSED, T_LEGNUMBER, T_RELATIVEPRICE, T_NKD, T_TOTALCOST, T_MATURITYISPRINCIPAL, T_REGISTRAR, 
+                T_INCOMERATE, T_INCOMESCALE, T_INCOMEPOINT, T_INTERESTSTART, T_RECEIPTAMOUNT, T_REGISTRARCONTRID, T_PRINCIPALBASE, T_PRINCIPALDIFF, T_STARTBASE, T_STARTDIFF, T_BASE, T_PAYREGTAX, T_RETURNINCOME, T_REJECTDATE, T_DELIVERINGFIID, 
+                T_BITMASK, T_OPERSTATE, T_SUPPLYTIME, T_TABLEPERCENT, T_TYPEPERCENT, T_CAPTION, T_TYPEDATE, T_COUNTDAY, T_CORRECT, T_PAYFIID, T_NKDFIID, T_SROK, T_CLIRINGDATE, T_CLIRINGCHANGE, T_DEPOSITID, T_DVP, T_CLIRINGTIME, T_SESSION, T_D1, T_D2, 
+                T_DMAXPAY, T_QRETURN, T_QRECEIVE, T_SUMINCOME, T_MOVEDATE, T_NOTICEDURATION, T_PLANMATURITY)
         select
                 TGT_DEALID /*T_DEALID*/, 0 /*T_LEGID*/, TGT_AVOIRISSID /*T_PFI*/, tgt_currencyid /*T_CFI*/, 
                 NULL /*T_START*/, TGT_MATURITY2 /*T_MATURITY*/, TGT_EXPIRY2 /*T_EXPIRY*/, t_amount /*T_PRINCIPAL*/, t_price2 /*T_PRICE*/, 
                 case when T_REPOBASE>0 then T_REPOBASE - 1 else 0 end  /*T_BASIS*/, NULL /*T_DURATION*/, NULL /*T_PITCH*/, T_COST2 /*T_COST*/, NULL /*T_MODE*/, 
-                NULL /*T_CLOSED*/, NULL /*T_REFRATE*/, NULL /*T_FACTOR*/, NULL /*T_FORMULA*/, 0 /*T_VERSION*/, 
+                NULL /*T_CLOSED*/, NULL /*T_REFRATE*/, NULL /*T_FACTOR*/, TGT_FORMULA /*T_FORMULA*/, 0 /*T_VERSION*/, 
                 NULL /*T_RESERVE0*/, NULL /*T_PERIODNUMBER*/, NULL /*T_PERIODTYPE*/, NULL /*T_DIFF*/, NULL /*T_PAYDAY*/, 
                 2 /*T_LEGKIND*/, 1 /*T_SCALE*/, 4 /*T_POINT*/, NULL /*T_ISCALCUSED*/, NULL /*T_LEGNUMBER*/, 
                 TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/, T_NKD2 /*T_NKD*/, T_TOTALCOST2 /*T_TOTALCOST*/, TGT_MATURITYISPRINCIPAL2 /*T_MATURITYISPRINCIPAL*/, NULL /*T_REGISTRAR*/, 
@@ -1712,31 +1390,86 @@ is
                 NULL /*T_NOTICEDURATION*/, NULL /*T_PLANMATURITY*/
                 from dtxdeal_tmp 
                 where t_replstate=0 and t_action=1 and TGT_ISREPO=chr(88);
-
-
+        WRITE_LOG_FINISH('Заполнение DDL_LEG_DBT по второй части (t_action=1)', 80);
+        
+        
+        
+        
+        -- Обработка изменений        
+        WRITE_LOG_START;
         deb('Изменение DDL_TICK_DBT (t_action=2)');
         
+        MERGE INTO ddl_tick_dbt tgt
+        USING (select * from dtxdeal_tmp where t_action=2 and t_replstate=0) sou on (tgt.t_dealid=sou.tgt_dealid)
+        WHEN MATCHED THEN UPDATE SET 
+                T_BOFFICEKIND=TGT_BOFFICEKIND /*T_BOFFICEKIND*/,                                                T_DEALTYPE=TGT_DEALKIND /*T_DEALTYPE*/,  
+                T_DEALCODE=T_CODE /*T_DEALCODE*/,       T_DEALCODETS=T_EXTCODE /*T_DEALCODETS*/,                T_TYPEDOC=t_tskind /*T_TYPEDOC*/, 
+                T_PARTYID=TGT_PARTYID /*T_PARTYID*/,    T_BROKERID=TGT_BROKERID /*T_BROKERID*/,                 T_MARKETID=TGT_MARKETID /*T_MARKETID*/, 
+                T_DEALDATE=T_DATE /*T_DEALDATE*/,       T_REGDATE=T_DATE /*T_REGDATE*/,                         T_DEALSTATUS=2 /*T_DEALSTATUS*/,  
+                T_DEPARTMENT=tgt_department /*T_DEPARTMENT*/,       T_OPER=g_oper /*T_OPER*/,                   T_FLAG1=case when tgt_marketid>0 then 'X' else chr(0) end /*T_FLAG1*/, 
+                T_FLAG5=case when T_COSTCHANGE=chr(88) then chr(88) else chr(0) end/*T_FLAG5*/,  
+                T_SCALE=1 /*T_SCALE*/,                  T_POINTS=4 /*T_POINTS*/,                                T_DEALTIME=T_TIME /*T_DEALTIME*/, 
+                T_PORTFOLIOID=TGT_PORTFOLIOID /*T_PORTFOLIOID*/,                                                T_NUMBER_COUPON=TGT_WARRANT_NUM /*T_NUMBER_COUPON*/, 
+                T_MARKETOFFICEID=tgt_sector /*T_MARKETOFFICEID*/,                                               T_PORTFOLIOID_2=TGT_PORTFOLIOID_2 /*T_PORTFOLIOID_2*/, 
+                T_AVOIRKIND=TGT_AVOIRKIND /*T_AVOIRKIND*/,                                                      T_RETURNINCOMEKIND=case when t_costchange=chr(88) then 2 end /*T_RETURNINCOMEKIND*/,  
+                T_COUNTRY=tgt_country /*T_COUNTRY*/,    T_PFI=tgt_avoirissid /*T_PFI*/;
+                
+                
+        MERGE INTO (select * from ddl_leg_dbt where t_legkind=0) tgt
+        USING (select * from dtxdeal_tmp where t_action=2 and t_replstate=0) sou on (tgt.t_dealid=sou.tgt_dealid)
+        WHEN MATCHED THEN UPDATE SET 
+                T_PFI=TGT_AVOIRISSID /*T_PFI*/,         T_CFI=tgt_currencyid /*T_CFI*/,                         T_MATURITY=TGT_MATURITY /*T_MATURITY*/, 
+                T_EXPIRY=TGT_EXPIRY /*T_EXPIRY*/,       T_PRINCIPAL=t_amount /*T_PRINCIPAL*/,                   T_PRICE=tgt_price /*T_PRICE*/, 
+                T_BASIS=case when T_REPOBASE>0 then T_REPOBASE - 1 else 0 end /*T_BASIS*/,                      T_COST=T_COST /*T_COST*/,  
+                T_FORMULA=TGT_FORMULA /*T_FORMULA*/,    T_SCALE=1 /*T_SCALE*/,                                  T_POINT=4 /*T_POINT*/,  
+                T_RELATIVEPRICE=TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/,  T_NKD=T_NKD /*T_NKD*/,                  T_TOTALCOST=T_TOTALCOST /*T_TOTALCOST*/, 
+                T_MATURITYISPRINCIPAL=TGT_MATURITYISPRINCIPAL /*T_MATURITYISPRINCIPAL*/,                        T_INCOMERATE=T_RATE /*T_INCOMERATE*/;
+        
+        MERGE INTO (select * from ddl_leg_dbt where t_legkind=2) tgt
+        USING (select * from dtxdeal_tmp where t_action=2 and t_replstate=0) sou on (tgt.t_dealid=sou.tgt_dealid)
+        WHEN MATCHED THEN UPDATE SET 
+                T_PFI=TGT_AVOIRISSID /*T_PFI*/,         T_CFI=tgt_currencyid /*T_CFI*/,                         T_MATURITY=TGT_MATURITY2 /*T_MATURITY*/, 
+                T_EXPIRY=TGT_EXPIRY2 /*T_EXPIRY*/,      T_PRINCIPAL=t_amount /*T_PRINCIPAL*/,                   T_PRICE=T_PRICE2 /*T_PRICE*/, 
+                T_BASIS=case when T_REPOBASE>0 then T_REPOBASE - 1 else 0 end /*T_BASIS*/,                      T_COST=T_COST2 /*T_COST*/,  
+                T_FORMULA=TGT_FORMULA /*T_FORMULA*/,    T_SCALE=1 /*T_SCALE*/,                                  T_POINT=4 /*T_POINT*/,  
+                T_RELATIVEPRICE=TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/,                                          T_NKD=T_NKD2 /*T_NKD*/,
+                T_TOTALCOST=T_TOTALCOST2 /*T_TOTALCOST*/,                                                       T_MATURITYISPRINCIPAL=TGT_MATURITYISPRINCIPAL2 /*T_MATURITYISPRINCIPAL*/,                        
+                T_INCOMERATE=T_RATE /*T_INCOMERATE*/;
+        
+        WRITE_LOG_FINISH('Изменение DDL_TICK_DBT (t_action=2)', 80);
+        
+        
+        -- Обработка удалений
+        WRITE_LOG_START;
         deb('Удаление из DDL_TICK_DBT (t_action=3)');    
         delete /*+ parallel(4) */ from ddl_tick_dbt where t_dealid in (select tgt_dealid from dtxdeal_tmp where t_replstate=0 and t_action=3);
         delete /*+ parallel(4) */ from ddl_leg_dbt where t_dealid in (select tgt_dealid from dtxdeal_tmp where t_replstate=0 and t_action=3); 
+        WRITE_LOG_FINISH('Удаление из DDL_TICK_DBT (t_action=3)', 80);
         
         commit;
         ----------------------------------------------------------------------------
+        -- Запись в DTXREPLOBJ_DBT
+        WRITE_LOG_START;
         deb('Запись в DTXREPLOBJ_DBT');
         delete /*+ parallel(4) */ from dtxreplobj_dbt where T_OBJECTTYPE=80 and T_OBJECTID in (select t_dealid from dtxdeal_tmp where t_replstate=0);
         commit;
         insert /*+ parallel(4) */ into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
         select 80, t_dealid, 0, tgt_dealid, 0, 0
         from dtxdeal_tmp where t_replstate=0;
+        WRITE_LOG_FINISH('Запись в DTXREPLOBJ_DBT', 80);
         commit;
         
+        -- Запись REPLSTATE в DTXDEAL_DBT
+        WRITE_LOG_START;
         deb('Запись REPLSTATE в DTXDEAL_DBT');
         update /*+ parallel(4) */ dtxdeal_dbt tgt 
         set tgt.t_replstate=1
         where t_dealid in (select t_dealid from dtxdeal_tmp where t_replstate=0);
+        WRITE_LOG_FINISH('Запись REPLSTATE в DTXDEAL_DBT', 80);
         commit;
         
         ----------------------------------------------------------------------------
+        WRITE_LOG_START;
         deb('Запись REPLSTATE в DSPGROUND_DBT / DSPGRDOC_DBT');
         insert /*+ parallel(4) */ into dspground_dbt( t_kind, t_DocLog, t_Direction, t_Receptionist, t_References, t_AltXld, t_SignedDate, t_Party)
         select 26, 513, 2, 11, 1, T_CONTRNUM, max(T_CONTRDATE), max(TGT_PARTYID) from dtxdeal_tmp group by T_CONTRNUM; 
@@ -1747,12 +1480,142 @@ is
         insert into dspgrdoc_dbt( t_SourceDocKind, t_SourceDocID, t_SPGroundID)
         select tgt_bofficekind, tgt_dealid, t_SPGroundID
         from dtxdeal_tmp dl join dspground_dbt dc on ( dl.t_contrnum=dc.t_AltXld and dl.tgt_partyid=dc.t_Party);
-        
+        WRITE_LOG_FINISH('Запись REPLSTATE в DSPGROUND_DBT / DSPGRDOC_DBT', 80);
         commit;
         
         ----------------------------------------------------------------------------
-        deb('Запись категорий и примечаний объектов');  
-              
+        WRITE_LOG_START;
+        deb('Запись примечаний к сделкам'); 
+        
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 101, g_oper, t_date, date'0001-01-01', t_conditions, date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and t_conditions is not null;
+        commit;
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 102, g_oper, t_date, date'0001-01-01', T_MARKETCODE, date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_MARKETCODE is not null;
+        commit;
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 103, g_oper, t_date, date'0001-01-01', T_PARTYCODE, date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_PARTYCODE is not null;
+        commit;
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 23, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC), date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC > 0;
+        commit;
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 27, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_DEF), date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_DEF > 0;
+        commit;        
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 28, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_VAL), date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_VAL > 0;
+        commit;        
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 116, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_OUTLAY), date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_OUTLAY > 0;
+        commit;
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 26, g_oper, t_date, date'0001-01-01', T_DOPCONTROL_NOTE, date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_DOPCONTROL_NOTE is not null;
+        commit;
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 29, g_oper, t_date, date'0001-01-01', T_PRICE_CALC_MET_NOTE, date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_MET_NOTE is not null;
+        commit;
+        insert /*+ append */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 101, lpad( tgt_dealid, 10, '0'), 112, g_oper, t_date, date'0001-01-01', to_char(T_PAYMCUR), date'4000-01-01'
+        from dtxdeal_tmp where t_replstate=0 and T_PAYMCUR > 0;
+        WRITE_LOG_FINISH('Запись примечаний к сделкам', 80);
+        commit;
+        
+               
+        WRITE_LOG_START;
+        deb('Запись категорий к сделкам');
+
+        delete /*+ parallel(4) */ from dobjatcor_dbt where t_objecttype in (101,117) and t_object in (select lpad( tgt_dealid, 10, '0') from dtxdeal_tmp where t_replstate=0); 
+        commit;
+        -- Установка значения категории Сделка подлежит дополнительному контролю ( 32 )
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 32, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_DOPCONTROL, 1,1,  2,2,  3,3,  4,4,  5,5,  6,6,  7,9,  8,1,  9,92,  10,94,  11,95,  12,96,  13,13,  14,23,  15,25,  16,7,  17,8,  18,38,  19,938,  20,93,  21,913,  22,925,  T_DOPCONTROL) 
+        from dtxdeal_tmp where t_replstate=0 and T_DOPCONTROL > 0 and tgt_BofficeKind in (101, 117);
+        commit;
+
+        -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 21, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_COSTCHANGEONCOMP, chr(0), 0, 1) 
+        from dtxdeal_tmp where t_replstate=0;
+        commit;
+
+        -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 22, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_COSTCHANGEONAMOR, chr(0), 0, 1) 
+        from dtxdeal_tmp where t_replstate=0;
+        commit;        
+        
+        -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 33, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        T_FISSKIND 
+        from dtxdeal_tmp where t_replstate=0;
+        commit;
+ 
+        -- Установка значения категории Способ определения РЦ ( 34 )
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 34, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_PRICE_CALC_METHOD, 1,'10-00', 2,'10-80', 3,'11-00', 4,'11-01', 5,'12-50', 6,'12-51', 7,'12-80', 8,'12-81', 9,'19-00', 10,'20-80', 11,'21-00', 12,'21-01', 13,'22-10', 14,'22-11', 15,'22-20', 16,'22-21', 17,'22-30', 18,'22-31', 19,'22-40', 20,'22-41', 21,'22-50', 22,'22-51', 23,'22-60', 24,'22-61', 25,'22-70', 26,'22-71', 27,'22-80', 28,'22-81', 29,'29-00', 30,'31-00', 31,'31-01', 32,'32-50', 33,'32-51', 34,'99-00', 35,'11-80', 36,'11-81','null') 
+        from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_METHOD > 0;
+        commit;       
+        
+        -- Признак урегулирования требований по ст.282 НК РФ.
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 19, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_ADJUSTMENT, chr(0), 0, 1) 
+        from dtxdeal_tmp where t_replstate=0 and T_ADJUSTMENT <> chr(0);
+        commit;   
+
+        -- Признак ограничения прав покупателя по сделке РЕПО - "Блокировка ц/б"
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 103, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_LIMIT, chr(0), 0, 1) 
+        from dtxdeal_tmp where t_replstate=0 and T_LIMIT <> chr(0);
+        commit;           
+        
+        -- Признак изменения ставки - "Плавающая ставка"
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 26, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_CHRATE, chr(0), 0, 1) 
+        from dtxdeal_tmp where t_replstate=0 and T_CHRATE <> chr(0);
+        commit;           
+
+        -- Признак изменения ставки - "Принадлежность дивидендов"
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 25, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_DIV, chr(0), 0, 1) 
+        from dtxdeal_tmp where t_replstate=0 and T_DIV <> chr(0);
+        commit;     
+        
+        -- Признак исполнения сделки в любой день
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 20, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        decode(T_ATANYDAY, chr(0), 0, 1) 
+        from dtxdeal_tmp where t_replstate=0 and T_ATANYDAY <> chr(0);
+        commit;  
+
+        -- "Место заключения сделки"
+        insert /*+ parallel(4) */ into dobjatcor_dbt(t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select 101, 105, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
+        T_COUNTRY 
+        from dtxdeal_tmp where t_replstate=0 and T_COUNTRY is not null and T_COUNTRY <> 158;
+        commit;          
+        
+        WRITE_LOG_FINISH('Запись категорий к сделкам', 80); 
+        
+        -- TODO платежи по needdemand
+        
         
         deb('Завершена процедура DEALS_CREATE_RECORDS');
     end deals_create_records;
@@ -1761,8 +1624,6 @@ is
 
     procedure load_deals_by_period(p_startdate date, p_enddate date default null)
     is
-        -- курсор перебирает все дни с p_startd по p_endd включительно
-        cursor с_days(p_startd date, p_endd date) is select p_startd+level-1 dt from dual connect by level <= p_endd-p_startd+1; 
         l_enddate date;
     begin
         deb('Запущена процедура LOAD_DEALS_BY_PERIOD');
@@ -1777,22 +1638,20 @@ is
         
         insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
         values (g_SESSION_ID, 'LOAD_DEALS', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
-        
         commit;
     
-        -- заполняем таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
-        deals_take_snapshot(p_startdate, l_enddate);
+        -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
+        deals_create_snapshot(p_startdate, l_enddate);
         
-        -- прогоняем сеты запросов по таблице снимка dtxdeal_tmp
+        -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
         run_all_queries( 80 );
         
-        -- формируем записи в таблицы целевой системы (DDL_TICK_DBT, DDL_LEG_DBT,...) на основе таблицы снимка
-        -- пока посделовательно по дням, TODO одним запуском процедуры
-        for days_r in с_days(p_startdate, l_enddate)
-        loop
-            deals_create_records( days_r.dt );
-        end loop;
+        -- переносит ошбки в таблицу логов dtxloadlog_dbt
+        write_errors_into_log;
         
+        -- формирует записи в таблицы целевой системы (DDL_TICK_DBT, DDL_LEG_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
+        deals_create_records;
+
         deb('Завершена процедура LOAD_DEALS_BY_PERIOD');
     end load_deals_by_period;
 
@@ -1912,9 +1771,6 @@ is
     procedure load_deals( p_date date, p_action number)
     is
 
-            categ_arr    categ_arr_type;
-            note_arr    note_arr_type;
-            
             --replobj_rec_arr             replobj_rec_arr_type;
             --replobj_rec_inx_arr         replobj_rec_inx_arr_type; -- индексная коллекция
             --replobj_tmp_arr             replobj_tmp_arr_type;            
@@ -2843,7 +2699,7 @@ is
 
         deb('Запущена процедура LOAD_DEALS за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
         g_debug_level_current := -1;
-        write_memory_stat;
+        
         open m_cur(p_date, p_action);
         loop
 
@@ -2871,7 +2727,7 @@ is
             
                         
             deb('Цикл 1 - регистрация кодов в буфере REPLOBJ');
-            write_memory_stat;
+            
             for i in deal_sou_arr.first .. deal_sou_arr.last
             loop
 
@@ -2944,7 +2800,7 @@ is
             deb_empty;
             deb_empty('=');
             deb('Цикл 2 - перекодирование, проверка и очистка');
-            write_memory_stat;
+            
             for i in deal_sou_arr.first .. deal_sou_arr.last
             loop
 
@@ -2955,7 +2811,7 @@ is
 
             end loop;
             deb('Цикл 2 завершен');
-            write_memory_stat;
+            
             deb_empty('=');
             deb('Заполняем буферы из целевой системы');
             -- заполняем буфер бумаг ---------------------------------------------------------------------
@@ -3094,7 +2950,7 @@ is
             ---------------------------------------------------------------------------------------
 
             deb('Цикл 3. Проверка наличия сделок в системе');
-            write_memory_stat;
+            
             -- 694 стр.
             for i in deal_sou_arr.first .. deal_sou_arr.last
             loop
@@ -3183,7 +3039,7 @@ is
             -- заполняем структуры DDL_TICK и DDL_LEG. Пока на вставку будет оптимизация в виде FORALL, изменение и удаление будут идти по одной операции.
             -- Предполагаю, что их будет несравнимо меньше. Если что, всегда можно дописать.
             deb('Цикл 4. Формирование записей в целевой системе');
-            write_memory_stat;
+            
             for i in deal_sou_arr.first .. deal_sou_arr.last
             loop
                 if deal_sou_add_arr(i).result = 2
@@ -3583,11 +3439,6 @@ is
                 deal_sou_back(tick_tmp.t_dealid) := i; -- может пригодиться, если будет ошибка при вставке записей в TICK
                 add_tmp.TGT_DEALID := tick_tmp.t_dealid;
 
-                -- добавление примечаний и категорий объектов по сделке в буфер
-                if main_tmp.t_action in (1,2)
-                then
-                    add_all_notes_categs(main_tmp, add_tmp);
-                end if;
 
                 if main_tmp.t_needdemand = chr(88)
                 then
@@ -3607,9 +3458,7 @@ is
             write_deals_to_ddltick;
             write_deals_to_replobj;
             update_dtxdeal;
-            -- сохраняем все добавленные примечания и категории
-            write_notes;
-            write_categs;
+
             -- вставляем платежи
             write_demands( p_action );
             -- сохраняем договоры по сделкам и привязку к сделкам
@@ -3921,7 +3770,6 @@ is
             DBMS_SESSION.FREE_UNUSED_USER_MEMORY;
             deb('Записываем платежи в БД');
             write_demands( p_action );
-            write_notes;
 
         end loop; -- конец главного цикла.
 
@@ -4040,19 +3888,6 @@ is
         demand_rq_arr( index_tmp )  := rq_tmp;
         demand_add_arr( index_tmp ) := add_tmp;
         deb('Платеж добавлен (всего в буфере demand_rq_arr = #1): t_docid=#2, t_type=#3, t_fiid=' || rq_tmp.t_fiid || ', t_dealpart=' || rq_tmp.t_dealpart || ', t_state=' || rq_tmp.t_State || ', t_id=' || rq_tmp.t_id , demand_rq_arr.count, rq_tmp.t_docid, rq_tmp.t_type, p_level=>5);
-
-        -- примечания
-        /* поле T_NOTE */
-        if p_demand.r_note is not null
-        then
-            add_note( c_OBJTYPE_PAYMENT, rq_tmp.t_id, 101, p_demand.r_note, p_demand.r_date );
-        end if;
-
-        /*Код на бирже*/
-        if p_demand.r_balancerate is not null
-        then
-            add_note( c_OBJTYPE_PAYMENT, rq_tmp.t_id, 44, p_demand.r_balancerate, p_demand.r_date );
-        end if;
 
 
 
@@ -4224,7 +4059,6 @@ is
 
 
 
-
     -- запись в лог
     procedure add_log( p_code number, p_objtype number, p_id number, p_subnum number, p_text varchar2, p_date date)
     is
@@ -4246,82 +4080,7 @@ is
         commit;
     end add_log;
 
-    -- запись в лог. Будущая реализация отложенной записи. Пишет в буфер, затем массово загоняет в таблицу. Только не для критичных ошибок.
-    procedure add_log_deferred( p_code number, p_objtype number, p_id number, p_subnum number, p_text varchar2, p_date date)
-    is
-        pragma autonomous_transaction;
-        T_SEVERITY number;
-    begin
-        case
-            when p_code > 600 THEN T_SEVERITY := 4;
-            when p_code > 500 THEN T_SEVERITY := 5;
-            when p_code > 400 THEN T_SEVERITY := 6;
-            when p_code > 300 THEN T_SEVERITY := 7;
-            when p_code > 200 THEN T_SEVERITY := 8;
-            when p_code > 100 THEN T_SEVERITY := 9;
-            when p_code > 0 THEN T_SEVERITY   := 10;
-        end case;
-
-        null;
-    end add_log_deferred;
-
-
-/*  Примечания
-        TODO  в процедуру LOAD_RATE
-
-        -- добавление записи в буфер dratehist на вставку
-        procedure add_dratehist_buf( T_RATEID number, T_ISINVERSE number, T_RATE number, T_SCALE number, T_POINT number, T_OPER number, T_SINCEDATE date, T_ISMANUALINPUT char)
-        is
-            T_INPUTDATE date := trim(sysdate);
-            T_INPUTTIME date := to_date('0001-01-01') + (sysdate - trim(sysdate));
-            tmp dratehist_dbt%rowtype;
-        begin
-            tmp.t_rateid := t_rateid;
-            tmp.T_ISINVERSE := T_ISINVERSE;
-            tmp.T_RATE := T_RATE;
-            tmp.T_SCALE := T_SCALE;
-            tmp.T_POINT := T_POINT;
-            tmp.T_OPER := T_OPER;
-            tmp.T_INPUTDATE := T_INPUTDATE;
-            tmp.T_INPUTTIME := T_INPUTTIME;
-            tmp.T_SINCEDATE := T_SINCEDATE;
-            tmp.T_ISMANUALINPUT := T_ISMANUALINPUT;
-
-            new_dratehist_arr( new_dratehist_arr.count ) := tmp;
-
-        end add_dratehist_buf;
-
-        -- добавление записи в буфер dratehist на удаление
-        procedure del_dratehist_buf( T_RATEID number, T_SINCEDATE date)
-        is
-            T_INPUTDATE date := trim(sysdate);
-            T_INPUTTIME date := to_date('0001-01-01') + (sysdate - trim(sysdate));
-            tmp dratehist_dbt%rowtype;
-        begin
-            tmp.t_rateid := t_rateid;
-            tmp.T_SINCEDATE := T_SINCEDATE;
-
-            del_dratehist_arr( del_dratehist_arr.count ) := tmp;
-
-        end del_dratehist_buf;
-*/
-
-    procedure write_memory_stat
-    is 
-        l_uga number;
-        l_uga_max number;
-        l_pga number;
-        l_pga_max number;
-    begin
-        execute immediate 'SELECT ROUND(a.VALUE/(1024*1024),2) MB FROM v$sesstat join v$statname using(statistic#) WHERE NAME = ''session uga memory'' and SID = my_SID' INTO l_uga;
-        execute immediate 'SELECT ROUND(a.VALUE/(1024*1024),2) MB FROM v$sesstat a,  v$statname b WHERE NAME = ''session pga memory'' AND a.statistic# = b.statistic# AND SID = my_SID' INTO l_pga;
-        execute immediate 'SELECT ROUND(a.VALUE/(1024*1024),2) MB FROM v$sesstat a,  v$statname b WHERE NAME = ''session uga memory max'' AND a.statistic# = b.statistic# AND SID = my_SID' INTO l_uga_max;
-        execute immediate 'SELECT ROUND(a.VALUE/(1024*1024),2) MB FROM v$sesstat a,  v$statname b WHERE NAME = ''session pga memory max'' AND a.statistic# = b.statistic# AND SID = my_SID' INTO l_pga_max;
-        deb('Статистика по памяти: текущая UGA=#1, макс. UGA=#2, текущая PGA=#3, макс. PGA=' || l_pga_max,  l_uga,  l_uga_max, l_pga);
-    exception when others then
-        deb('Статистика по памяти: ошибка, нет привилегий на v$sesstat и v$statname');
-    end;
-    
+   
         
     
 begin
