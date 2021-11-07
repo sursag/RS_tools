@@ -223,6 +223,35 @@ CREATE TABLE DTXDEMAND_TMP
 
 
 
+CREATE TABLE DTXCOURSE_TMP
+(
+  T_COURSEID        NUMBER(15)                  NOT NULL,
+  T_TYPE            NUMBER(5)                   NOT NULL,
+  T_INSTANCEDATE    DATE                        NOT NULL,
+  T_ACTION          NUMBER(5),
+  T_REPLSTATE       NUMBER(5),
+  T_BASEFIKIND      NUMBER(5),
+  T_BASEFIID        NUMBER(15),
+  T_FIID            NUMBER(15),
+  T_MARKETID        NUMBER(15),
+  T_MARKETSECTORID  NUMBER(15),
+  T_POINT           NUMBER(5),
+  T_SCALE           NUMBER(10),
+  T_RATEDATE        DATE,
+  T_RATE            FLOAT(53),
+  TGT_RATEID        NUMBER(15),
+  TGT_TYPE          NUMBER(5),
+  TGT_MARKETID      NUMBER(15),
+  TGT_SECTORID      NUMBER(15),
+  TGT_BASEFIID      NUMBER(15),
+  TGT_FIID          NUMBER(15),
+  TGT_ISLAST        CHAR(1 BYTE)
+) compress nologging;
+
+
+
+
+
 create table dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));
 
 CREATE TABLE DTX_QUERYLOG_DBT
