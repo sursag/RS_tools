@@ -34,14 +34,16 @@ is
     deb_start_timestamp timestamp;
 
 
-
+    -- сбрасывает счетчик времени. Отсчет начинается с момента запуска этой процедуры 
+    -- Полезна, если надо пропустить какие-то запросы, пото замерить отдельный запрос.
     procedure WRITE_LOG_START
     is 
     begin
         write_query_log_start := sysdate;
     end WRITE_LOG_START;
 
-
+    -- Сохраняет текст в лог производительности, потом сбрасывает счетчик времени. 
+    -- Если интересующие нас запросы идут один за другим, можно не использовать отдельную процедуру WRITE_LOG_START 
     procedure WRITE_LOG_FINISH(L_TEXT varchar2, L_OBJECTYPE number, L_SET number := 0, L_NUM number := 0)
     is
     pragma autonomous_transaction;
@@ -51,32 +53,10 @@ is
         insert into dtx_querylog_dbt(T_STARTTIME, T_DURATION, T_TEXT, T_OBJECTYPE, T_SET, T_NUM, T_SESSION, T_SESSDETAIL, T_EXECROWS)
         values (write_query_log_start, round((sysdate-write_query_log_start)*24*60*60), L_TEXT, L_OBJECTYPE, L_SET, L_NUM, g_SESSION_ID, g_SESS_DETAIL_ID, l_cou);
         commit;
+        write_query_log_start := sysdate;
     end WRITE_LOG_FINISH;    
 
     
-    -- регистрирует запись о начале работы в журнале
-    procedure add_record_in_journal( p_proc varchar2, p_instancedate date, p_action number)
-    is
-    begin
-        update dtxjournal_dbt set T_RESULT='E' where T_RESULT='R';
-        insert into dtxjournal_dbt(T_INSTANCEDATE, T_PROCEDURE_NAME, T_ACTION, T_BEGIN_SYSDATE, T_END_SYSDATE, T_DURATION, T_RECORDS, T_ERRORS, T_AUDSID, T_RESULT)
-        values( p_instancedate, p_proc, p_action, procedure_start_date, null, null, null, null, my_SID, 'R');
-        commit;
-    end add_record_in_journal;
-    
-    -- редактирует запись в журнале по окончании работы
-    procedure upd_record_in_journal( p_result char, p_records number, p_errors number)
-    is
-    begin
-        update dtxjournal_dbt
-        set T_RESULT=p_result,
-            T_END_SYSDATE=sysdate,
-            T_DURATION = round((sysdate-cast(procedure_start_date  as date))*24*60*60),
-            T_RECORDS=p_records,
-            T_ERRORS=p_errors
-            where T_RESULT='R';
-        commit;
-    end upd_record_in_journal;
 
 
     -- получение кода подразделения по ID. Список загружается при инициализации пакета. В рамках задачи список статичен.
@@ -918,7 +898,6 @@ is
         l_err_counter := 0;
         l_counter := 0;
         procedure_start_date := systimestamp;
-        add_record_in_journal('RATES', p_date, p_action);
         deb('Запущена процедура  LOAD_RATE за ' || to_char(p_date, 'dd.mm.yyyy') || ', тип действия ' || p_action);
 
         open m_cur(p_date, p_action);
@@ -1090,7 +1069,6 @@ is
             commit;
             deb('Обработка блока данных завершена. COMMIT.');
         end loop;
-        upd_record_in_journal('D', l_counter, l_err_counter);
         deb('Завершена процедура load_rate');
     end load_rates;
 
@@ -1135,6 +1113,46 @@ is
     end deals_create_snapshot;
     
     
+    
+    -- процедура создает снимок по сделкам из DTXDEMAND_DBT в таблицу DTXDEMAND_TMP
+    procedure demands_create_snapshot( p_startdate date, p_enddate date)
+    is 
+    begin
+        deb('Запущена процедура DEMANDS_CREATE_SNAPSHOT c ' || to_char(p_startdate, 'dd.mm.yyyy hh24:mi') || ' по '  || to_char(p_enddate, 'dd.mm.yyyy hh24:mi'));
+        -- получаем снимок из dtxdemand_dbt в dtxdemand_tmp - только тот набор записей, который необходимо реплицировать. Записываем его в таблицу, имеющею пустые поля для индетификаторов целевой системы.
+
+        deb('Очистка таблицы DTXDEMAND_TMP и удаление индексов');
+        WRITE_LOG_START;
+        execute immediate 'truncate table dtxdemand_tmp';
+        
+            for j in (select index_name from user_indexes where table_name='DTXDEMAND_TMP')
+            loop
+                begin        
+                    execute immediate 'DROP INDEX ' || j.index_name;
+                exception when others 
+                then
+                    deb('Ошибка при удалении индекса ' || j.index_name);
+                end;
+            end loop;
+        
+        deb('Создаем снимок с ' || to_char(p_startdate,'dd.mm.yyyy') || ' по ' || to_char(p_enddate,'dd.mm.yyyy'));
+        -- просто переливаем данные с replstate=0 за нужный instancedate
+        execute immediate
+            'insert /*+ append */ into dtxdemand_tmp(T_DEMANDID, T_INSTANCEDATE, T_ACTION, T_REPLSTATE, T_DEALID, T_PART, T_ISFACT, T_KIND, T_DIRECTION, T_FIKIND, T_DATE, T_SUM, T_PAYCURRENCYID, T_PAYSUM, T_PAYRATE, T_BALANCERATE, T_NETTING, T_PLANDEMEND, T_NOTE, T_STATE)
+            select T_DEMANDID, T_INSTANCEDATE, T_ACTION, T_REPLSTATE, T_DEALID, T_PART, T_ISFACT, T_KIND, T_DIRECTION, T_FIKIND, T_DATE, T_SUM, T_PAYCURRENCYID, T_PAYSUM, T_PAYRATE, T_BALANCERATE, T_NETTING, T_PLANDEMEND, T_NOTE, T_STATE
+            from dtxdemand_dbt where t_instancedate between :1 and :2 and t_replstate=0' using p_startdate, p_enddate;
+        deb('Загружено в снимок #1 строк', sql%rowcount);
+        
+        WRITE_LOG_FINISH('Создаем снимок по платежам',80);
+        commit;
+        
+        deb('Завершена процедура DEMANDS_CREATE_SNAPSHOT');
+    end demands_create_snapshot;    
+    
+    
+    
+    
+    
     -- процедура записывает ошибки в лог из таблцы ошибок dtx_error_dbt
     -- только те, которые еще не были запсаны
     procedure write_errors_into_log
@@ -1165,21 +1183,21 @@ is
         deb('Создаем индексы на снимке');
         begin
             execute immediate 'CREATE INDEX I_DEALID ON DTXDEAL_TMP(T_DEALID)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_ACTION ON DTXDEAL_TMP(T_ACTION)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_KIND ON DTXDEAL_TMP(T_KIND)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_REPLSTATE ON DTXDEAL_TMP(T_REPLSTATE)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_ISREPO ON DTXDEAL_TMP(TGT_ISREPO)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_COSTCHANGEONCOMP ON DTXDEAL_TMP(T_COSTCHANGEONCOMP)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_COSTCHANGE ON DTXDEAL_TMP(T_COSTCHANGE)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_COSTCHANGEONAMOR ON DTXDEAL_TMP(T_COSTCHANGEONAMOR)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_ADJUSTMENT ON DTXDEAL_TMP(T_ADJUSTMENT)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_NEEDDEMAND ON DTXDEAL_TMP(T_NEEDDEMAND)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_NEEDDEMAND2 ON DTXDEAL_TMP(T_NEEDDEMAND2)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_ATANYDAY ON DTXDEAL_TMP(T_ATANYDAY)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_LIMIT ON DTXDEAL_TMP(T_LIMIT)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_CHRATE ON DTXDEAL_TMP(T_CHRATE)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_DIV ON DTXDEAL_TMP(T_DIV)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_ISBASKET ON DTXDEAL_TMP(T_ISBASKET)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_ACTION ON DTXDEAL_TMP(T_ACTION)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_KIND ON DTXDEAL_TMP(T_KIND)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_REPLSTATE ON DTXDEAL_TMP(T_REPLSTATE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_ISREPO ON DTXDEAL_TMP(TGT_ISREPO)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_COSTCHANGEONCOMP ON DTXDEAL_TMP(T_COSTCHANGEONCOMP)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_COSTCHANGE ON DTXDEAL_TMP(T_COSTCHANGE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_COSTCHANGEONAMOR ON DTXDEAL_TMP(T_COSTCHANGEONAMOR)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_ADJUSTMENT ON DTXDEAL_TMP(T_ADJUSTMENT)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_NEEDDEMAND ON DTXDEAL_TMP(T_NEEDDEMAND)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_NEEDDEMAND2 ON DTXDEAL_TMP(T_NEEDDEMAND2)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_ATANYDAY ON DTXDEAL_TMP(T_ATANYDAY)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_LIMIT ON DTXDEAL_TMP(T_LIMIT)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_CHRATE ON DTXDEAL_TMP(T_CHRATE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_DIV ON DTXDEAL_TMP(T_DIV)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_ISBASKET ON DTXDEAL_TMP(T_ISBASKET)';
         exception when others then
             deb('Ошибка при создании индексов на снимке');
         end;
@@ -1189,11 +1207,36 @@ is
         
         WRITE_LOG_FINISH('Создаем индексы на снимке', 80);    
         
-        deb('Завершена процедура DEALS_TAKE_SNAPSHOT');
+        deb('Завершена процедура DEALS_CREATE_INDEXES');
     end deals_create_indexes;
 
 
-    
+
+    -- процедура создает индексы на снимке и считает статистику
+    procedure demands_create_indexes
+    is 
+    begin
+        deb('Запущена процедура DEMANDS_CREATE_INDEXES');
+        WRITE_LOG_START;
+        deb('Создаем индексы на снимке');
+        begin
+            execute immediate 'CREATE INDEX BTREEI_DTXDEAL_DEMANDID ON DTXDEMAND_TMP(T_DEMANDID)';
+            execute immediate 'CREATE INDEX BTREEI_DTXDEAL_DEALID ON DTXDEMAND_TMP(T_DEALID)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEMAND_ACTION ON DTXDEMAND_TMP(T_ACTION)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEMAND_KIND ON DTXDEMAND_TMP(T_KIND)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEMAND_REPLSTATE ON DTXDEMAND_TMP(T_REPLSTATE)';
+  
+        exception when others then
+            deb('Ошибка при создании индексов на снимке');
+        end;
+        
+        deb('Считаем статистику на снимке');
+        dbms_stats.gather_table_stats(user, 'DTXDEMAND_TMP', cascade=>true);
+        
+        WRITE_LOG_FINISH('Создаем индексы на снимке', 90);    
+        
+        deb('Завершена процедура DEMANDS_CREATE_INDEXES');
+    end demands_create_indexes;    
       
 
 
@@ -1257,19 +1300,27 @@ is
        
         run_query_set(p_objecttype, 2);
 
-        if p_objecttype=80 then
+        if p_objecttype=80 
+        then
             deals_create_indexes;
+        elsif p_objecttype=90 
+        then
+            demands_create_indexes;
         end if;
         
         -- отметим найденные ошибки. 
+        WRITE_LOG_START;
         case p_objecttype
         when 80 then
             execute immediate
             'update dtxdeal_tmp set t_replstate=2 where t_dealid in (select t_objectid from dtx_error_dbt where t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
             --insert into dtxloadlog_dbt(T_MSGTIME, T_MSGCODE, T_SEVERITY, T_OBJTYPE, T_OBJECTID, T_SUBOBJNUM, T_FIELD, T_MESSAGE, T_CORRECTION, T_CORRUSER, T_CORRTIME, T_INSTANCEDATE)
         when 90 then
+        execute immediate
+            'update dtxdemand_tmp set t_replstate=2 where t_demandid in (select t_objectid from dtx_error_dbt where t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
             null;
         end case;
+        WRITE_LOG_FINISH( 'Отмечаем в снимке найденные ошибки', p_objecttype, 0, 0);
 
         deb('Третий сет запросов. Обогащение идентификаторами из целевой системы');
 
@@ -1452,12 +1503,21 @@ is
         WRITE_LOG_START;
         deb('Запись в DTXREPLOBJ_DBT');
         delete /*+ parallel(4) */ from dtxreplobj_dbt where T_OBJECTTYPE=80 and T_OBJECTID in (select t_dealid from dtxdeal_tmp where t_replstate=0);
+        WRITE_LOG_FINISH('Запись в DTXREPLOBJ_DBT - подготовка', 80);
         commit;
+        
+        WRITE_LOG_START;
+        update dtxreplobj_dbt set t_objstate=2 where T_OBJECTTYPE=90 and t_objectid in (select t_demandid from dtxdemand_tmp where t_replstate=0 and t_action=3);
+        WRITE_LOG_FINISH('Запись в DTXREPLOBJ_DBT - удаления', 80);
+        commit;
+        
+        WRITE_LOG_START;
         insert /*+ parallel(4) */ into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
-        select 80, t_dealid, 0, tgt_dealid, 0, 0
-        from dtxdeal_tmp where t_replstate=0;
-        WRITE_LOG_FINISH('Запись в DTXREPLOBJ_DBT', 80);
+        select 80, t_dealid, 0, tgt_dealid, 0, 0  from dtxdeal_tmp where t_replstate=0 and t_action=1;
+        WRITE_LOG_FINISH('Запись в DTXREPLOBJ_DBT - вставки', 80);
         commit;
+        
+        
         
         -- Запись REPLSTATE в DTXDEAL_DBT
         WRITE_LOG_START;
@@ -1622,6 +1682,81 @@ is
 
 
 
+    -- формирует записи в целевой системе на основе таблицы снимка
+    procedure demands_create_records
+    is
+    begin
+        deb('Запущена процедура DEMANDS_CREATE_RECORDS');
+        execute immediate 'alter trigger DDLRQ_DBT_TBI disable';
+        
+        -- Обработка вставок
+        
+        WRITE_LOG_START;
+        deb('Заполнение DDLRQ_DBT (t_action=1)');
+        insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL)
+        select TGT_DEALID, TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, T_PART, TGT_KIND/*T_KIND*/, TGT_SUBKIND, TGT_TYPE, 0 /*T_NUM*/, T_SUM, TGT_FIID, TGT_PARTY, -1, -1/*T_PLACEID*/, TGT_STATE, TGT_PLANDATE, TGT_FACTDATE, CHR(0), CHR(0)/*T_NETTING*/, null, 0, TGT_CHANGEDATE, 0 /*T_ACTION*/, 0, 2908, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
+        from dtxdemand_tmp where t_replstate=0 and t_action=1;
+        WRITE_LOG_FINISH('Заполнение DDLRQ_DBT (t_action=1)', 90); 
+        
+        -- Обработка изменений
+        
+        WRITE_LOG_START;
+        deb('Изменение DDLRQ_DBT (t_action=2)');
+        merge /*+ parallel(4) */ into (select T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_AMOUNT, T_FIID, T_PARTY, T_PLANDATE, T_FACTDATE, T_STATE from ddlrq_dbt) rq 
+        using (select * from dtxdemand_tmp where t_replstate=0 and t_action=2) sou on (sou.tgt_demandid=rq.t_id)
+        when matched then update set
+        RQ.T_DOCKIND=SOU.TGT_DEALKIND,          RQ.T_DOCID=SOU.TGT_DEALID,          RQ.T_DEALPART=SOU.T_PART, 
+        RQ.T_KIND=SOU.TGT_KIND,                 RQ.T_SUBKIND=SOU.TGT_SUBKIND,       RQ.T_TYPE=SOU.TGT_TYPE, 
+        RQ.T_AMOUNT=SOU.T_SUM,                  RQ.T_FIID=SOU.TGT_FIID,             RQ.T_PARTY=SOU.TGT_PARTY, 
+        RQ.T_PLANDATE=SOU.TGT_PLANDATE,         RQ.T_FACTDATE=SOU.TGT_FACTDATE,     RQ.T_STATE=SOU.TGT_STATE;
+        WRITE_LOG_FINISH('Изменение DDLRQ_DBT (t_action=2)', 90); 
+
+        -- Обработка удалений
+
+        WRITE_LOG_START;
+        deb('Удаление из DDLRQ_DBT (t_action=3)');
+        delete from ddlrq_dbt where t_id in (select TGT_DEMANDID from dtxdemand_tmp where t_action=3 and t_replstate=0); 
+        WRITE_LOG_FINISH('Удаление из DDLRQ_DBT (t_action=3)', 90);         
+        
+        
+        ----------------------------------------------------------------------------
+        -- Запись в DTXREPLOBJ_DBT
+        WRITE_LOG_START;
+        deb('Запись платежей в DTXREPLOBJ_DBT - подготовка');
+        delete /*+ parallel(4) */ from dtxreplobj_dbt where T_OBJECTTYPE=90 and T_OBJECTID in (select t_demandid from dtxdemand_tmp where t_replstate=0);
+        WRITE_LOG_FINISH('Запись платежей в DTXREPLOBJ_DBT - подготовка', 90);
+        commit;
+        
+        WRITE_LOG_START;
+        update dtxreplobj_dbt set t_objstate=2 where T_OBJECTTYPE=90 and t_objectid in (select t_demandid from dtxdemand_tmp where t_replstate=0 and t_action=3);
+        WRITE_LOG_FINISH('Запись платежей в DTXREPLOBJ_DBT - удаления', 90);
+        commit;
+        
+        WRITE_LOG_START;
+        insert /*+ parallel(4) */ into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
+        select 90, t_demandid, 0, tgt_demandid, 0, 0 from dtxdemand_tmp where t_replstate=0 and t_action=1;
+        WRITE_LOG_FINISH('Запись платежей в DTXREPLOBJ_DBT - вставки', 90);
+        commit;
+        
+        
+        
+        -- Запись REPLSTATE в DTXDEMAND_DBT
+        WRITE_LOG_START;
+        deb('Запись REPLSTATE в DTXDEMAND_DBT');
+        update /*+ parallel(4) */ dtxdemand_dbt tgt 
+        set tgt.t_replstate=1
+        where t_demandid in (select t_demandid from dtxdemand_tmp where t_replstate=0);
+        WRITE_LOG_FINISH('Запись REPLSTATE в DTXDEAL_DBT', 90);
+        commit;
+        
+        ----------------------------------------------------------------------------
+        
+        
+        execute immediate 'alter trigger DDLRQ_DBT_TBI enable';
+        deb('Завершена процедура DEMANDS_CREATE_RECORDS');
+    end demands_create_records;
+
+
     procedure load_deals_by_period(p_startdate date, p_enddate date default null)
     is
         l_enddate date;
@@ -1655,6 +1790,40 @@ is
         deb('Завершена процедура LOAD_DEALS_BY_PERIOD');
     end load_deals_by_period;
 
+
+
+    procedure load_demands_by_period(p_startdate date, p_enddate date default null)
+    is
+        l_enddate date;
+    begin
+        deb('Запущена процедура LOAD_DEMANDS_BY_PERIOD');
+                
+        l_enddate := nvl( p_enddate, p_startdate + 1 - 1/24/60/60); 
+    
+        -- Если SESSION_ID был не зназначен, то есть, LOAD_DEALS вызвали вручную, назначим его
+        if g_SESSION_ID is null then
+            insert into dtx_session_dbt(t_startdate, t_enddate, t_user, t_status)
+            values( p_startdate, l_enddate, user, 'R') returning t_sessid into g_SESSION_ID;
+        end if;
+        
+        insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
+        values (g_SESSION_ID, 'LOAD_DEMANDS', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
+        commit;
+    
+        -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
+        demands_create_snapshot(p_startdate, l_enddate);
+        
+        -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
+        run_all_queries( 90 );
+        
+        -- переносит ошбки в таблицу логов dtxloadlog_dbt
+        write_errors_into_log;
+        
+        -- формирует записи в таблицы целевой системы (DDL_RQ_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
+        demands_create_records;
+
+        deb('Завершена процедура LOAD_DEMANDS_BY_PERIOD');
+    end load_demands_by_period;
 
 
 
@@ -2693,7 +2862,6 @@ is
         
         l_err_counter := 0;
         l_counter := 0;
-        add_record_in_journal('DEALS', p_date, p_action);
         deb('Инициализация буфера DBMS_OUTPUT');
         DBMS_OUTPUT.ENABLE (buffer_size => NULL);
 
@@ -3477,7 +3645,6 @@ is
         upload_subject_types;
         g_debug_level_current := g_debug_level_limit;
         
-        upd_record_in_journal('D', l_counter, l_err_counter);
         deb('Завершена процедура LOAD_DEALS');
         procedure_exec_interval := systimestamp - procedure_start_date;
         deb('Время выполнения процедуры: #1:#2', extract(minute from procedure_exec_interval), extract(second from procedure_exec_interval));
@@ -3545,7 +3712,6 @@ is
         l_err_counter := 0;
         l_counter := 0;
         procedure_start_date := sysdate;
-        add_record_in_journal('DEMANDS', p_date, p_action);
         deb('Инициализация буфера DBMS_OUTPUT');
         DBMS_OUTPUT.ENABLE (buffer_size => NULL);
 
@@ -3774,7 +3940,6 @@ is
         end loop; -- конец главного цикла.
 
         g_debug_level_current := g_debug_level_limit;
-        upd_record_in_journal('D', l_counter, l_err_counter);
         
         deb('Завершена процедура  LOAD_DEMANDS');
         procedure_exec_interval := systimestamp - procedure_start_date;

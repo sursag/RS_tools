@@ -41,6 +41,8 @@ CREATE TABLE DTX_QUERY_DBT
   T_IN_USE      CHAR(1 CHAR)                    DEFAULT chr(88)
 );
 
+CREATE UNIQUE INDEX DTX_QUERY_DBT_ID1 ON DTX_QUERY_DBT (T_OBJECTTYPE,T_SET, T_NUM);
+
 
 -- таблицца инстанов ошибок
 CREATE TABLE DTX_ERROR_DBT
@@ -181,6 +183,44 @@ CREATE TABLE DTXDEAL_TMP
   TGT_FORMULA               NUMBER(3),
   TGT_RECEIPTAMOUNT         NUMBER
 ) compress nologging;
+
+
+
+CREATE TABLE DTXDEMAND_TMP
+(
+  T_DEMANDID       NUMBER(15)                   NOT NULL,
+  T_INSTANCEDATE   DATE                         NOT NULL,
+  T_ACTION         NUMBER(5),
+  T_REPLSTATE      NUMBER(5),
+  T_DEALID         NUMBER(15)                   NOT NULL,
+  T_PART           NUMBER(5),
+  T_ISFACT         CHAR(1 CHAR),
+  T_KIND           NUMBER(5),
+  T_DIRECTION      NUMBER(5),
+  T_FIKIND         NUMBER(5),
+  T_DATE           DATE,
+  T_SUM            NUMBER(32,12),
+  T_PAYCURRENCYID  NUMBER(15),
+  T_PAYSUM         NUMBER(32,12),
+  T_PAYRATE        FLOAT(53),
+  T_BALANCERATE    FLOAT(53),
+  T_NETTING        NUMBER(15),
+  T_PLANDEMEND     NUMBER(15),
+  T_NOTE           VARCHAR2(1500 CHAR),
+  T_STATE          NUMBER(5),
+  TGT_DEMANDID     NUMBER(15),
+  TGT_DEALID       NUMBER(15),
+  TGT_PARTY        NUMBER(15),
+  TGT_DEALKIND     NUMBER(5),
+  TGT_FIID         NUMBER(15),
+  TGT_BOFFICEKIND  NUMBER(3),
+  TGT_KIND         NUMBER(1), -- 0-требование, 1-обязательство
+  TGT_PLANDATE     DATE,
+  TGT_FACTDATE     DATE,
+  TGT_TYPE         NUMBER(2), -- 8-поставка, 2-оплата
+  TGT_SUBKIND      NUMBER(1) -- для КД и ЧП: 0-деньги, 1-ценные бумаги
+) compress nologging;
+
 
 
 create table dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));

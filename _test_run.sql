@@ -1,6 +1,7 @@
 begin   -- 3.5 минуты
-    load_rss.load_deals( date'2021-08-01', 1);
+    --load_rss.load_deals( date'2021-08-01', 1);
     load_rss.load_deals_by_period( date'2021-08-01');
+    load_rss.load_demands_by_period( date'2021-08-01');
 end;
 
 begin  -- 7 минут
@@ -31,17 +32,22 @@ truncate table DSPGROUND_DBT;
 -- ќчистка дл€ перезагрузки платежей
 
 delete from dtxreplobj_dbt where t_objecttype in (90) and t_objectid>=20000000000;
-update dtxdemand_dbt set t_replstate=0 where t_replstate in (1,2) and t_demandid>=20000000000;
+update dtxdemand_dbt set t_replstate=0 where  t_demandid>=20000000000 and t_instancedate< date'2021-08-02';
 truncate table ddlrq_dbt;
 truncate table dtxloadlog_dbt;
 
 --------------------------------------------
 
+select rowid, a.* from dtx_query_dbt a order by t_objecttype, t_set, t_num
+
+
 select count(*) from ddl_tick_dbt
 
 select * from dtxloadlog_dbt
 
-select * from dtxdemand_dbt where t_demandid in  (20000003637, 20000003638)
+select * from dtxdemand_dbt where t_instancedate = date'2021-08-01'
+
+select * from dtxdemand_tmp where t_instancedate = date'2021-08-01'
 
 select * from dtxdemand_dbt where t_replstate=1
 

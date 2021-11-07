@@ -192,6 +192,7 @@ is
     function GetIsKSU(p_fi number) return char DETERMINISTIC;
     function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC;    
     procedure load_deals_by_period(p_startdate date, p_enddate date default null);
+    procedure load_demands_by_period(p_startdate date, p_enddate date default null);
 
                    
     -- процедура добавления платежа в кэш DEMAND_RQ_ARR
