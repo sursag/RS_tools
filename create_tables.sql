@@ -1,3 +1,7 @@
+-- Скрипт создает все вспомогательные структуры
+-- Заполнение таблицы ошибок надо перенести в скрипт _fill_query_table.sql, когда тот перестанет так часто меняться
+
+
 -- таблица сеансов
 CREATE TABLE DTX_SESSION_DBT
 (
@@ -44,7 +48,7 @@ CREATE TABLE DTX_QUERY_DBT
 CREATE UNIQUE INDEX DTX_QUERY_DBT_ID1 ON DTX_QUERY_DBT (T_OBJECTTYPE,T_SET, T_NUM);
 
 
--- таблицца инстанов ошибок
+-- таблица инстансов ошибок
 CREATE TABLE DTX_ERROR_DBT
 (
   T_SESSID      NUMBER(10),
@@ -53,204 +57,10 @@ CREATE TABLE DTX_ERROR_DBT
   T_OBJECTID    NUMBER(15),
   T_QUERYID     NUMBER(5),
   T_ERRORCODE   NUMBER(4),
-  T_TIMESTAMP   DATE
+  T_TIMESTAMP   DATE,
+  IS_LOGGED     CHAR(1 CHAR),
+  T_ID          NUMBER GENERATED ALWAYS AS IDENTITY NOT NULL
 );
-
-
-
-CREATE TABLE DTXDEAL_TMP
-(
-  T_DEALID                  NUMBER(15)          NOT NULL,
-  T_INSTANCEDATE            DATE                NOT NULL,
-  T_ACTION                  NUMBER(5),
-  T_REPLSTATE               NUMBER(5),
-  T_KIND                    NUMBER(5)           NOT NULL,
-  T_EXTCODE                 VARCHAR2(30 CHAR),
-  T_MARKETCODE              VARCHAR2(30 CHAR),
-  T_PARTYCODE               VARCHAR2(30 CHAR),
-  T_CODE                    VARCHAR2(30 CHAR),
-  T_DATE                    DATE,
-  T_TIME                    DATE,
-  T_CLOSEDATE               DATE,
-  T_TECHTYPE                NUMBER(5),
-  T_TSKIND                  CHAR(1 CHAR),
-  T_ACCOUNTTYPE             NUMBER(5),
-  T_MARKETID                NUMBER(15),
-  T_SECTOR                  NUMBER(15),
-  T_BROKERID                NUMBER(10),
-  T_PARTYID                 NUMBER(15),
-  T_DEPARTMENT              NUMBER(10),
-  T_AVOIRISSID              NUMBER(15),
-  T_WARRANTID               NUMBER(15),
-  T_PARTIALID               NUMBER(15),
-  T_AMOUNT                  NUMBER(32,12),
-  T_CURRENCYID              NUMBER(15),
-  T_PRICE                   NUMBER(32,12),
-  T_POINT                   NUMBER(5),
-  T_COST                    NUMBER(32,12),
-  T_NKD                     NUMBER(32,12),
-  T_TOTALCOST               NUMBER(32,12),
-  T_RATE                    FLOAT(53),
-  T_PRICE2                  NUMBER(32,12),
-  T_COST2                   NUMBER(32,12),
-  T_NKD2                    NUMBER(32,12),
-  T_TOTALCOST2              NUMBER(32,12),
-  T_PAYDATE                 DATE,
-  T_SUPLDATE                DATE,
-  T_PAYDATE2                DATE,
-  T_SUPLDATE2               DATE,
-  T_CONTRNUM                VARCHAR2(15 CHAR),
-  T_CONTRDATE               DATE,
-  T_REPOBASE                NUMBER(5),
-  T_COSTCHANGEONCOMP        CHAR(1 CHAR),
-  T_COSTCHANGE              CHAR(1 CHAR),
-  T_COSTCHANGEONAMOR        CHAR(1 CHAR),
-  T_ADJUSTMENT              CHAR(1 CHAR),
-  T_NEEDDEMAND              CHAR(1 CHAR),
-  T_ATANYDAY                CHAR(1 CHAR),
-  T_CONDITIONS              VARCHAR2(1500 CHAR),
-  T_PAYMCUR                 NUMBER(15),
-  T_ISPFI_1                 CHAR(1 CHAR),
-  T_ISPFI_2                 CHAR(1 CHAR),
-  T_COUNTRY                 NUMBER(5),
-  T_NKDFIID                 NUMBER(15),
-  T_LIMIT                   CHAR(1 CHAR),
-  T_CHRATE                  CHAR(1 CHAR),
-  T_CHAVR                   DATE,
-  T_DIV                     CHAR(1 CHAR),
-  T_BALANCEDATE             DATE,
-  T_DOPCONTROL              NUMBER(5),
-  T_DOPCONTROL_NOTE         VARCHAR2(255 CHAR),
-  T_FISSKIND                NUMBER(5),
-  T_PRICE_CALC_METHOD       NUMBER(5),
-  T_PRICE_CALC              NUMBER(32,12),
-  T_PRICE_CALC_VAL          NUMBER(10),
-  T_PRICE_CALC_DEF          NUMBER(32,12),
-  T_PRICE_CALC_OUTLAY       NUMBER(32,12),
-  T_PARENTID                NUMBER(15),
-  T_PRICE_CALC_MET_NOTE     VARCHAR2(1000 CHAR),
-  T_NEEDDEMAND2             CHAR(1 CHAR),
-  T_INITBUYDATE             DATE,
-  T_CONTROL_DEAL_NOTE       NUMBER(32,12),
-  T_CONTROL_DEAL_NOTE_DATE  DATE,
-  T_REPO_PROC_ACCOUNT       VARCHAR2(20 CHAR),
-  T_PRIOR_PORTFOLIOID       CHAR(1 CHAR),
-  T_PORTFOLIOID             CHAR(1 CHAR),
-  T_NETTING_DEALID_DEST     NUMBER(15),
-  TGT_DEALID                NUMBER(15),
-  TGT_BOFFICEKIND           NUMBER(3),
-  TGT_PAYMCUR               NUMBER(15),
-  TGT_CURRENCYID            NUMBER(15),
-  TGT_NKDFIID               NUMBER(15),
-  TGT_AVOIRISSID            NUMBER(15),
-  TGT_AVOIRKIND             NUMBER(3),
-  TGT_CURNOM                NUMBER,
-  TGT_MARKETID              NUMBER(15),
-  TGT_SECTOR                NUMBER(15),
-  TGT_BROKERID              NUMBER(15),
-  TGT_PARENTID              NUMBER(15),
-  TGT_WARRANTID             NUMBER(15),
-  TGT_PARTIALID             NUMBER(15),
-  TGT_WARRANT_NUM           NUMBER(5),
-  TGT_PARTIAL_NUM           NUMBER(5),
-  TGT_PORTFOLIOID           NUMBER(5),
-  TGT_PORTFOLIOID_2         NUMBER(2),
-  TGT_REPOBASE              NUMBER(5),
-  TGT_STATE                 NUMBER(5),
-  TGT_DEPARTMENT            NUMBER(5),
-  TGT_DEALKIND              NUMBER(5),
-  TGT_GROUP                 NUMBER(5),
-  TGT_ISBUY                 CHAR(1 CHAR),
-  TGT_ISSALE                CHAR(1 CHAR),
-  TGT_ISLOAN                CHAR(1 CHAR),
-  TGT_ISREPO                CHAR(1 CHAR),
-  TGT_ISBASKET              CHAR(1 CHAR),
-  TGT_ISLOANTOREPO          CHAR(1 CHAR),
-  TGT_ISBOND                CHAR(1 CHAR),
-  TGT_ISQUOTED              CHAR(1 CHAR),
-  TGT_ISKSU                 CHAR(1 CHAR),
-  TGT_RELATIVEPRICE         CHAR(1 CHAR),
-  TGT_COUNTRY               VARCHAR2(3 CHAR),
-  TGT_PARTYID               NUMBER(15),
-  TGT_OBJTYPE               NUMBER(3),
-  TGT_PRICE                 NUMBER(32,12),
-  TGT_MATURITY              DATE,
-  TGT_EXPIRY                DATE,
-  TGT_MATURITYISPRINCIPAL   CHAR(1 CHAR),
-  TGT_MATURITY2             DATE,
-  TGT_EXPIRY2               DATE,
-  TGT_MATURITYISPRINCIPAL2  CHAR(1 CHAR),
-  TGT_FORMULA               NUMBER(3),
-  TGT_RECEIPTAMOUNT         NUMBER
-) compress nologging;
-
-
-
-CREATE TABLE DTXDEMAND_TMP
-(
-  T_DEMANDID       NUMBER(15)                   NOT NULL,
-  T_INSTANCEDATE   DATE                         NOT NULL,
-  T_ACTION         NUMBER(5),
-  T_REPLSTATE      NUMBER(5),
-  T_DEALID         NUMBER(15)                   NOT NULL,
-  T_PART           NUMBER(5),
-  T_ISFACT         CHAR(1 CHAR),
-  T_KIND           NUMBER(5),
-  T_DIRECTION      NUMBER(5),
-  T_FIKIND         NUMBER(5),
-  T_DATE           DATE,
-  T_SUM            NUMBER(32,12),
-  T_PAYCURRENCYID  NUMBER(15),
-  T_PAYSUM         NUMBER(32,12),
-  T_PAYRATE        FLOAT(53),
-  T_BALANCERATE    FLOAT(53),
-  T_NETTING        NUMBER(15),
-  T_PLANDEMEND     NUMBER(15),
-  T_NOTE           VARCHAR2(1500 CHAR),
-  T_STATE          NUMBER(5),
-  TGT_DEMANDID     NUMBER(15),
-  TGT_DEALID       NUMBER(15),
-  TGT_PARTY        NUMBER(15),
-  TGT_DEALKIND     NUMBER(5),
-  TGT_FIID         NUMBER(15),
-  TGT_BOFFICEKIND  NUMBER(3),
-  TGT_KIND         NUMBER(1), -- 0-требование, 1-обязательство
-  TGT_PLANDATE     DATE,
-  TGT_FACTDATE     DATE,
-  TGT_TYPE         NUMBER(2), -- 8-поставка, 2-оплата
-  TGT_SUBKIND      NUMBER(1) -- для КД и ЧП: 0-деньги, 1-ценные бумаги
-) compress nologging;
-
-
-
-CREATE TABLE DTXCOURSE_TMP
-(
-  T_COURSEID        NUMBER(15)                  NOT NULL,
-  T_TYPE            NUMBER(5)                   NOT NULL,
-  T_INSTANCEDATE    DATE                        NOT NULL,
-  T_ACTION          NUMBER(5),
-  T_REPLSTATE       NUMBER(5),
-  T_BASEFIKIND      NUMBER(5),
-  T_BASEFIID        NUMBER(15),
-  T_FIID            NUMBER(15),
-  T_MARKETID        NUMBER(15),
-  T_MARKETSECTORID  NUMBER(15),
-  T_POINT           NUMBER(5),
-  T_SCALE           NUMBER(10),
-  T_RATEDATE        DATE,
-  T_RATE            FLOAT(53),
-  TGT_RATEID        NUMBER(15),
-  TGT_TYPE          NUMBER(5),
-  TGT_MARKETID      NUMBER(15),
-  TGT_SECTORID      NUMBER(15),
-  TGT_BASEFIID      NUMBER(15),
-  TGT_FIID          NUMBER(15),
-  TGT_ISLAST        CHAR(1 BYTE)
-) compress nologging;
-
-
-
-
 
 create table dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));
 
@@ -266,17 +76,294 @@ CREATE TABLE DTX_QUERYLOG_DBT
   T_NUM         NUMBER(5),
   T_RESULT      CHAR(1 CHAR),
   T_TOTALROWS   NUMBER(10),
-  T_EXECROWS    NUMBER(10)
+  T_EXECROWS    NUMBER(10),
+  T_ID          NUMBER GENERATED ALWAYS AS IDENTITY NOT NULL
 );
 
 
 
-create or replace view v_log as
-select t_starttime start_time, trunc(t_duration/60)||':'||lpad(mod(t_duration,60),2,'0') Exec_Time, t_text,  t_set, t_num, trunc(total/60)||':'||lpad(mod(total,60),2,'0') Total_Time from (
-select a.*, sum(t_duration) over() total from DTX_QUERYLOG_DBT a where t_sessdetail=(select max(t_sessdetail) from DTX_QUERYLOG_DBT ))  
-order by 1, t_set, t_num;
 
-create view v_err as
+
+
+create or replace view v_log as
+select t_starttime start_time, trunc(t_duration/60)||':'||lpad(mod(t_duration,60),2,'0') Exec_Time, t_text,  t_set, t_num, T_EXECROWS, trunc(total/60)||':'||lpad(mod(total,60),2,'0') Total_Time from (
+select a.*, sum(t_duration) over() total from DTX_QUERYLOG_DBT a where t_sessdetail=(select max(t_sessdetail) from DTX_QUERYLOG_DBT ))  
+order by t_id;
+
+create or replace view v_err as
 select T_TIMESTAMP, T_OBJECTTYPE, T_OBJECTID, T_QUERYID, IS_LOGGED, T_ERRORCODE, T_DESC 
 from dtx_error_dbt left join dtx_errorkinds_dbt on (T_ERRORCODE=t_code)
-where t_detailid=(select max(t_detailid) from dtx_error_dbt) order by 1,3;
+where t_detailid=(select max(t_detailid) from dtx_error_dbt) order by t_id;
+
+
+
+
+--SQL Statement which produced this data:
+--
+--  select rowid, a.* from dtx_errorkinds_dbt a  order by 2;
+--
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (206, 'Ошибка: объект находится в режиме ручного редактирования');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (300, 'Ошибка: в буферной схеме отсутствует удаляемый курс');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (301, 'Ошибка: для курса не задана торговая площадка ');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (302, 'Ошибка: торговая площадка не найдена в replobj_dbt');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (305, 'Ошибка: для курса не задан базовый финансовый инструмент');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (306, 'Ошибка: базовый финансовый инструмент не найден в replobj_dbt');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (310, 'Ошибка: для курса не задан котируемый финансовый инструмент');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (311, 'Ошибка: котируемый финансовый инструмент не найден в replobj_dbt');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (320, 'Ошибка: уже существует данный курс за такую дату');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (321, 'Ошибка: невозможно обновить несуществующий курс');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (322, 'Ошибка: невозможно удалить несуществующий курс');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (330, 'Ошибка: значение номинала указано не в валюте номинала');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (331, 'Ошибка: изменяемый/удаляемый номинал не реплицирован в целевую систему');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (332, 'Ошибка: изменяемый/удаляемый номинал отсутствует в системе');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (333, 'Ошибка: уже существует номинал за такую дату');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (421, 'Ошибка: сделка уже существует в целевой системе');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (422, 'Ошибка: сделка не найдена в целевой системе');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (423, 'Ошибка: сделка уже удалена в целевой системе');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (500, 'Предупреждение: стоимость (T_COST) не равна произведению цены (T_PRICE) в валюте на количество бумаг (T_AMOUNT)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (501, 'Предупреждение: стоимость (T_COST) не равна произведению цены (T_PRICE) на количество бумаг (T_AMOUNT)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (502, 'Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) на количество бумаг (T_AMOUNT)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (525, 'Не найден контрагент по внебиржевой сделке');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (527, 'Предупреждение: техническая сделка в систему не реплицируется');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (534, 'Ошибка: не найден субъект T_MARKETID');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (539, 'Ошибка: не задан параметр T_CODE - код сделки');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (542, 'Ошибка: неверно задан параметр T_MARKETID, наш банк не может быть биржой');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (543, 'Ошибка: не найден сектор биржи');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (544, 'Ошибка: не найден субъект T_BROKERID');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (545, 'Ошибка: неверно задан параметр T_BROKERID, наш банк не может быть брокером');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (547, 'Ошибка: для внебиржевой сделки не найден контрагент, параметр T_PARTYID');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (548, 'Ошибка: для операции погашения не задан купон (T_WARRANTID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (549, 'Ошибка: для операции погашения не найден загруженный купон (T_WARRANTID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (550, 'Ошибка: для операции погашения не задано ЧП (T_PARTIALID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (551, 'Ошибка: для операции погашения не найдено загруженное ЧП (T_PARTIALID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (552, 'Ошибка: не найдена ценная бумага (T_AVOIRISSID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (553, 'Ошибка: не задан параметр T_AMOUNT - количество ценных бумаг');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (554, 'Ошибка: не найдена валюта сделки (T_CURRENCYID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (555, 'Ошибка: не найдена валюта НКД (T_NKDFIID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (556, 'Ошибка: не задан параметр T_PRICE - цена за шт. ценной бумаги, не включая НКД');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (557, 'Ошибка: не задан параметр T_COST - стоимость ценных бумаг без НКД');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (558, 'Ошибка: не задан параметр T_TOTALCOST - общая сумма сделки вкл. НКД в валюте сделки');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (559, 'Ошибка: не задан параметр T_SUPLDATE - плановая дата передачи/возврата в займе');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (560, 'Ошибка: не задан параметр T_SUPLDATE2 - плановая дата передачи/возврата в займе');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (561, 'Ошибка: не задан параметр T_SUPLDATE - плановая дата поставки в сделках');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (562, 'Ошибка: не задан параметр T_PAYDATE - плановая дата оплаты в сделках');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (563, 'Ошибка: не задан параметр T_PRICE2 - цена за шт. ценной бумаги, не включая НКД по 2-ой части РЕПО');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (564, 'Ошибка: не задан параметр T_COST2 - стоимость ценных бумаг без НКД по 2-ой части РЕПО');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (565, 'Ошибка: не задан параметр T_TOTALCOST2 - общая сумма сделки вкл. НКД в валюте сделки ао 2-ой части РЕПО');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (566, 'Ошибка: не задан параметр T_SUPLDATE2 - плановая дата поставки в сделках');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (567, 'Ошибка: не задан параметр T_PAYDATE2 - плановая дата оплаты в сделках');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (568, 'Ошибка: не задан параметр T_KIND - вид сделки');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (596, 'Ошибка: не найдена сделка РЕПО на корзину (T_PARENTID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (601, 'Ошибка: Не задан номер сделки для платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (602, 'Ошибка: Не задан номер части сделки для платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (603, 'Ошибка: Не задан t_kind платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (604, 'Ошибка: Не задан t_direction - направление платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (605, 'Ошибка: Не задан t_fikind  платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (606, 'Ошибка: Не задано t_date - дата платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (607, 'Ошибка: Не задано t_sum - сумма платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (608, 'Ошибка: Не задано t_state - статус платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (609, 'Ошибка: Не задано t_paycurrencyid - валюта платежа');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (610, 'Ошибка: Т/О по сделке находится в режиме ручного редактирования');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (611, 'Ошибка: Не найдено в dtx_replobj реплицированное Т/О по сделке');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (650, 'Ошибка: не найдена запись с условиями сделки (ddl_leg_dbt)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (651, 'Ошибка: не найдена запись с условиями второй части сделки (ddl_leg_dbt)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (997, 'Ошибка: для операции погашения не найдено ЧП (T_PARTIALID)');
+COMMIT;

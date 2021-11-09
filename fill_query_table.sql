@@ -20,19 +20,19 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, 80, sysdate, dtxdeal_tmp.t_dealid, '||CHR(13)||CHR(10)||'case    when ro.t_objstate=2 then 423 -- сделка уже удалена в целевой системе'||CHR(13)||CHR(10)||'    when tick.t_dealid is null then 422 -- нет тикета сделки'||CHR(13)||CHR(10)||'    when leg.t_dealid is null then 422 -- нет ценовых условий сделки'||CHR(13)||CHR(10)||'    when ro.t_destid is null  then 422 -- сделка с таким dealid не реплицировалась'||CHR(13)||CHR(10)||'    when ro.t_objstate=1 then 206 -- сделка в ручном режиме'||CHR(13)||CHR(10)||'end T_ERRORCODE '||CHR(13)||CHR(10)||'from dtxdeal_tmp left join dtxreplobj_dbt ro  on (ro.t_objecttype=80 and dtxdeal_tmp.t_dealid=ro.t_objectid)'||CHR(13)||CHR(10)||'left join ddl_tick_dbt tick on (ro.t_destid = tick.t_dealid) '||CHR(13)||CHR(10)||'left join ddl_leg_dbt leg on (ro.t_destid = leg.t_dealid and leg.t_legkind=0)'||CHR(13)||CHR(10)||'where dtxdeal_tmp.t_action in (2,3) and (ro.t_destid is null or tick.t_dealid is null or leg.t_dealid is null)'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, 80, sysdate, dtxdeal_tmp.t_dealid, '||CHR(13)||CHR(10)||'case    when ro.t_objstate=2 then 423 -- сделка уже удалена в целевой системе'||CHR(13)||CHR(10)||'    when tick.t_dealid is null then 422 -- нет тикета сделки'||CHR(13)||CHR(10)||'    when leg.t_dealid is null then 422 -- нет ценовых условий сделки'||CHR(13)||CHR(10)||'    when ro.t_destid is null  then 422 -- сделка с таким dealid не реплицировалась'||CHR(13)||CHR(10)||'end T_ERRORCODE '||CHR(13)||CHR(10)||'from dtxdeal_tmp left join dtxreplobj_dbt ro  on (ro.t_objecttype=80 and dtxdeal_tmp.t_dealid=ro.t_objectid)'||CHR(13)||CHR(10)||'left join ddl_tick_dbt tick on (ro.t_destid = tick.t_dealid) '||CHR(13)||CHR(10)||'left join ddl_leg_dbt leg on (ro.t_destid = leg.t_dealid and leg.t_legkind=0)'||CHR(13)||CHR(10)||'where dtxdeal_tmp.t_action in (2,3) and (ro.t_destid is null or tick.t_dealid is null or leg.t_dealid is null)'||CHR(13)||CHR(10)||'', 1, 
     'Запрос выполняется только для операций обновления/удаления. Проверяет, есть ли в целевой системе реплицированные сделки с данным ID. Обрабатывает сразу несколько событий - отсутствие сделки в тикетах, в leg, отсутствие в replobj и ручной режим обработки. Может, потом разобью на несколько запросов', 'Проверка наличия сделки в RS', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 20, 'insert /*+ parallel(4) */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, 80, sysdate,  d.t_dealid, 421 from dtxdeal_dbt dp, dtxdeal_tmp d where d.t_code=dp.t_code and d.t_dealid > dp.t_dealid'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 20, 'insert /*+ parallel(4) */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, 80, sysdate,  d.t_dealid, 421 from dtxdeal_dbt dp join dtxdeal_tmp d on (d.t_code=dp.t_code and d.t_dealid > dp.t_dealid )'||CHR(13)||CHR(10)||'where d.t_replstate=0 and d.t_action=1'||CHR(13)||CHR(10)||'', 1, 
     'Запрос выполняется только для операций вставки. Проверяет дубли сделок по T_DEALCODE.', 'Проверка дублей по DEALCODE', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, 80, sysdate, d.t_dealid, 206 from dtxdeal_tmp d join dtxreplobj_dbt ro on (ro.t_objecttype=80 and ro.t_objectid=d.t_dealid)'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, 80, sysdate, d.t_dealid, 206 from dtxdeal_tmp d join dtxreplobj_dbt ro on (ro.t_objecttype=80 and ro.t_objectid=d.t_dealid and ro.t_objstate=1)'||CHR(13)||CHR(10)||'', 1, 
     'Объект находится в режиме ручного редактирования.', 'Проверка на ручное редактирование', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -68,7 +68,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 90, 'insert /*+ append */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, 80, sysdate, t_dealid, 558 from dtxdeal_tmp where (T_PRICE + T_COST) = 0 and T_TOTALCOST > 0'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 90, 'insert /*+ append */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, 80, sysdate, t_dealid, 558 from dtxdeal_tmp where (T_PRICE + T_COST) = 0 and T_TOTALCOST > 0 and t_action in (1,2)'||CHR(13)||CHR(10)||'', 1, 
     'Не задан параметр T_TOTALCOST - общая сумма сделки вкл. НКД в валюте сделки', 'Проверка заполнения T_TOTALCOST', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -98,7 +98,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 3, 50, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=20 and t_objstate=0) sou on (sou.t_objectid=tgt.T_AVOIRISSID)'||CHR(10)||'when matched then update set tgt.TGT_AVOIRISSID=sou.T_DESTID', 1, 
+   (80, 3, 50, '4', 1, 
     'Обогащение записи - добавление TGT_AVOIRISSID из DTXREPLOBJ_DBT', 'Добавление TGT_AVOIRISSID', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -194,20 +194,8 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 3, 210, 'update dtxdeal_tmp set TGT_GROUP = (select RSB_SECUR.get_OperationGroup( op.t_systypes ) from ddl_tick_dbt tk, doprkoper_dbt op where op.T_KIND_OPERATION = tk.T_DEALTYPE and op.T_DOCKIND = tk.T_BOFFICEKIND and tk.t_dealid=TGT_DEALID) where t_replstate=0 and t_action=2', 1, 
-    'Обогащение записи - добавление TGT_GROUP для изменений', 'Добавление TGT_GROUP для изменений (action=2)', NULL, 'X');
-Insert into DTX_QUERY_DBT
-   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
-    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
- Values
-   (80, 3, 220, 'update dtxdeal_tmp set  TGT_ISBUY   = decode(RSB_SECUR.IsBuy(TGT_GROUP), 1, chr(88), chr(0)),'||CHR(13)||CHR(10)||'                        TGT_ISSALE = decode(RSB_SECUR.IsSale(TGT_GROUP), 1, chr(88), chr(0)),'||CHR(13)||CHR(10)||'                        TGT_ISREPO = decode(RSB_SECUR.IsRepo(TGT_GROUP), 1, chr(88), chr(0)),'||CHR(13)||CHR(10)||'                        TGT_ISLOAN = decode(RSB_SECUR.IsLoan(TGT_GROUP), 1, chr(88), chr(0))'||CHR(13)||CHR(10)||' where t_replstate=0 and t_action=2', 1, 
-    'Обогащение записи - добавление TGT_ISREPO / TGT_ISLOAN для изменений (action=2)', 'Добавление TGT_ISREPO / TGT_ISLOAN для изменений (action=2)', NULL, 'X');
-Insert into DTX_QUERY_DBT
-   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
-    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
- Values
-   (80, 3, 230, 'update dtxdeal_tmp set '||CHR(13)||CHR(10)||'TGT_ISLOAN = decode( t_kind, 50, CHR(88), 60, CHR(88), CHR(0)),'||CHR(13)||CHR(10)||'TGT_ISREPO = case when t_kind in (30,40,50,60) then CHR(88) else chr(0) end'||CHR(13)||CHR(10)||'where t_replstate=0 and t_action=1', 1, 
-    'Обогащение записи - добавление TGT_ISREPO / TGT_ISLOAN для вставок (action=1)', 'Добавление TGT_ISREPO / TGT_ISLOAN для вставок (action=1)', NULL, 'X');
+   (80, 3, 230, 'update dtxdeal_tmp set '||CHR(13)||CHR(10)||'TGT_ISLOAN = decode( t_kind, 50, CHR(88), 60, CHR(88), CHR(0)),'||CHR(13)||CHR(10)||'TGT_ISREPO = case when t_kind in (30,40,50,60) then CHR(88) else chr(0) end'||CHR(13)||CHR(10)||'where t_replstate=0 and t_action in (1,2)', 1, 
+    'Обогащение записи - добавление TGT_ISREPO / TGT_ISLOAN ', 'Добавление TGT_ISREPO / TGT_ISLOAN', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
@@ -380,7 +368,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 3, 80, 'update dtxdemand_tmp set TGT_DEALID=ddlrq_dbt_seq.nextval where t_action=1 and t_replstate=0', 1, 
+   (90, 3, 80, 'update dtxdemand_tmp set TGT_DEMANDID=ddlrq_dbt_seq.nextval where t_action=1 and t_replstate=0', 1, 
     'Обогащение записи - добавление TGT_DEALID для вставок (action=1)', 'Добавление TGT_DEALID для вставок (action=1)', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -412,4 +400,10 @@ Insert into DTX_QUERY_DBT
  Values
    (90, 3, 130, 'update dtxdemand_tmp set TGT_SUBKIND=case when tgt_type in (8,9) then 1 else 0 end', 1, 
     'Обогащение записи - добавление TGT_SUBKIND', 'Добавление TGT_SUBKIND', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (90, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, 90, sysdate, t_demandid, 611 from dtxdemand_tmp where TGT_DEMANDID is null and t_action in (2,3)', 1, 
+    'Ошбка: Не найдено в dtxreplobj реплицированное Т/О по сделке (для обновлений и удалений)', 'Не найдено в dtxreplobj Т/О по сделке (action = 2,3)', 'X', 'X');
 COMMIT;

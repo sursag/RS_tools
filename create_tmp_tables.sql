@@ -162,29 +162,38 @@ COMMENT ON COLUMN DTXDEAL_TMP.TGT_ISFICTIVE IS '‘иктивна€ операци€ - отражает дв
 
 
 
+
+
+
 CREATE TABLE DTXCOURSE_TMP
 (
-  T_COURSEID        NUMBER(15)                  NOT NULL,
-  T_TYPE            NUMBER(5)                   NOT NULL,
-  T_INSTANCEDATE    DATE                        NOT NULL,
-  T_ACTION          NUMBER(5),
-  T_REPLSTATE       NUMBER(5),
-  T_BASEFIKIND      NUMBER(5),
-  T_BASEFIID        NUMBER(15),
-  T_FIID            NUMBER(15),
-  T_MARKETID        NUMBER(15),
-  T_MARKETSECTORID  NUMBER(15),
-  T_POINT           NUMBER(5),
-  T_SCALE           NUMBER(10),
-  T_RATEDATE        DATE,
-  T_RATE            FLOAT(53),
-  TGT_RATEID        NUMBER(15),
-  TGT_TYPE          NUMBER(5),
-  TGT_MARKETID      NUMBER(15),
-  TGT_SECTORID      NUMBER(15),
-  TGT_BASEFIID      NUMBER(15),
-  TGT_FIID          NUMBER(15),
-  TGT_ISLASTDATE    CHAR(1 CHAR)
+  T_COURSEID          NUMBER(15)                NOT NULL,
+  T_TYPE              NUMBER(5)                 NOT NULL,
+  T_INSTANCEDATE      DATE                      NOT NULL,
+  T_ACTION            NUMBER(5),
+  T_REPLSTATE         NUMBER(5),
+  T_BASEFIKIND        NUMBER(5),
+  T_BASEFIID          NUMBER(15),
+  T_FIID              NUMBER(15),
+  T_MARKETID          NUMBER(15),
+  T_MARKETSECTORID    NUMBER(15),
+  T_POINT             NUMBER(5),
+  T_SCALE             NUMBER(10),
+  T_RATEDATE          DATE,
+  T_RATE              FLOAT(53),
+  TGT_RATEID          NUMBER(15),
+  TGT_TYPE            NUMBER(5),
+  TGT_MARKETID        NUMBER(15),
+  TGT_SECTORID        NUMBER(15),
+  TGT_BASEFIID        NUMBER(15),
+  TGT_FIID            NUMBER(15),
+  TGT_ISLASTDATE      CHAR(1 CHAR),
+  TGT_ISNOMINAL       CHAR(1 CHAR),
+  TGT_ISDOMINANT      CHAR(1 CHAR),
+  TGT_ISRELATIVE      CHAR(1 CHAR),
+  TGT_ISBOND          CHAR(1 CHAR),
+  TGT_FACEVALUE_FIID  NUMBER(15),
+  TGT_BASEFIKIND      NUMBER
 )
 LOGGING 
 MONITORING;
@@ -202,6 +211,21 @@ COMMENT ON COLUMN DTXCOURSE_TMP.TGT_BASEFIID IS ' од базового инструмента FI из 
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_FIID IS ' од котируемого инструмента FI из DFININSTR_DBT';
 
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_ISLASTDATE IS '«аполн€етс€ X, если дата в этой записи превышает остальные и превышает дату в DRATEDEF_DBT. “о есть, если это значение должно попасть в DRATEDEF_DBT';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_ISNOMINAL IS 'явл€етс€ номиналом дл€ бумаги с индексируемым ном.';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_ISRELATIVE IS ' урс задан в процентах от номинала';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_ISBOND IS 'Ѕазовый фининструмент - облигаци€';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_FACEVALUE_FIID IS '¬алюта номинала, если это курс дл€ бумаги (T_BASEFIKIND=20)';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_BASEFIKIND IS '¬ид базового иинсструмента, если это бумага';
+
+
+
+
+
 
 
 
