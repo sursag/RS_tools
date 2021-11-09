@@ -333,6 +333,45 @@ is
         
     
     
+   
+    -- процедура создает снимок по сделкам из DTXDEMAND_DBT в таблицу DTXDEMAND_TMP
+    procedure comiss_create_snapshot( p_startdate date, p_enddate date)
+    is 
+    begin
+        deb('Запущена процедура COMISS_CREATE_SNAPSHOT c ' || to_char(p_startdate, 'dd.mm.yyyy hh24:mi') || ' по '  || to_char(p_enddate, 'dd.mm.yyyy hh24:mi'));
+        -- получаем снимок из dtxdemand_dbt в dtxdemand_tmp - только тот набор записей, который необходимо реплицировать. Записываем его в таблицу, имеющею пустые поля для индетификаторов целевой системы.
+
+        deb('Очистка таблицы DTXCOMISS_TMP и удаление индексов');
+        WRITE_LOG_START;
+        execute immediate 'truncate table dtxcomiss_tmp';
+        
+            for j in (select index_name from user_indexes where table_name='DTXCOMISS_TMP')
+            loop
+                begin        
+                    execute immediate 'DROP INDEX ' || j.index_name;
+                exception when others 
+                then
+                    deb('Ошибка при удалении индекса ' || j.index_name);
+                end;
+            end loop;
+        
+        deb('Создаем снимок с ' || to_char(p_startdate,'dd.mm.yyyy') || ' по ' || to_char(p_enddate,'dd.mm.yyyy'));
+        -- просто переливаем данные с replstate=0 за нужный instancedate
+        execute immediate
+            'insert /*+ append */ into DTXCOMISS_TMP(T_COMISSID, T_INSTANCEDATE, T_ACTION, T_REPLSTATE, T_DEALID, T_TYPE, T_SUM, T_NDS, T_CURRENCYID, T_DATE)
+            select T_COMISSID, T_INSTANCEDATE, T_ACTION, T_REPLSTATE, T_DEALID, T_TYPE, T_SUM, T_NDS, T_CURRENCYID, T_DATE
+            from dtxcomiss_dbt where t_instancedate between :1 and :2 and t_replstate=0' using p_startdate, p_enddate;
+        deb('Загружено в снимок #1 строк', sql%rowcount);
+        
+        WRITE_LOG_FINISH('Создан снимок по комиссиям  c ' || to_char(p_startdate, 'dd.mm.yyyy hh24:mi') || ' по '  || to_char(p_enddate, 'dd.mm.yyyy hh24:mi'), 70);
+        commit;
+        
+        deb('Завершена процедура COMISS_CREATE_SNAPSHOT');
+    end comiss_create_snapshot;     
+    
+    
+    
+    
     -- процедура записывает ошибки в лог из таблцы ошибок dtx_error_dbt
     -- только те, которые еще не были запсаны
     procedure write_errors_into_log
@@ -448,6 +487,32 @@ is
       
 
 
+    -- процедура создает индексы на снимке и считает статистику
+    procedure comiss_create_indexes
+    is 
+    begin
+        deb('Запущена процедура COMISS_CREATE_INDEXES');
+        WRITE_LOG_START;
+        deb('Создаем индексы на снимке');
+        begin
+            execute immediate 'CREATE INDEX I_COMISSID ON DTXCOMISS_TMP(T_COMISSID)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOMISS_ACTION ON DTXCOMISS_TMP(T_ACTION)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOMISS_KIND ON DTXCOMISS_TMP(T_KIND)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOMISS_REPLSTATE ON DTXCOMISS_TMP(T_REPLSTATE)';
+
+        exception when others then
+            deb('Ошибка при создании индексов на снимке');
+        end;
+        
+        deb('Считаем статистику на снимке');
+        dbms_stats.gather_table_stats(user, 'DTXCOMISS_TMP', cascade=>true);
+        
+        WRITE_LOG_FINISH('Создаем индексы на снимке', 70);    
+        
+        deb('Завершена процедура COMISS_CREATE_INDEXES');
+    end comiss_create_indexes;
+
+
 
     procedure run_one_query_set( p_objecttype number, p_set number )
     is 
@@ -514,6 +579,8 @@ is
                 demands_create_indexes;
         elsif p_objecttype=70 then
                 courses_create_indexes;
+        elsif p_objecttype=100 then
+                comiss_create_indexes;
         end if;
         
         -- отметим найденные ошибки. 
@@ -1042,16 +1109,16 @@ is
         from  dratedef_dbt where t_rateid in (select tgt_rateid from dtxcourse_tmp where TGT_ISLASTDATE=chr(88) and t_action=1 and t_replstate=0);
         --l_counter := l_counter + sql%rowcount;
         WRITE_LOG_FINISH('Перенос DRATEDEF в DRATEHIST', 70); 
-        commit;
+        --commit;
 
         -- сработает только для вставки (TGT_NEWRATEID есть только у нее)
         -- если курс в dratedef_dbt отсутствует вообще, добавим его. tgt_rateid уже есть
         -- пойдет строка с TGT_ISLASTDATE = 'X' и TGT_NEWRATEID IS NOT NULL
         insert into dratedef_dbt(T_RATEID, T_FIID, T_OTHERFI, T_NAME, T_DEFINITION, T_TYPE, T_ISDOMINANT, T_ISRELATIVE, T_INFORMATOR, T_MARKET_PLACE, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_SECTION)
-        select TGT_NEWRATEID, TGT_FIID, TGT_BASEFIID, 'Курс для ' || TGT_BASEFIID, chr(1), TGT_TYPE, TGT_ISDOMINANT, TGT_ISRELATIVE, TGT_MARKETID, TGT_MARKETID, TGT_MARKETID, TGT_RATE, T_SCALE, T_POINT, t_instancedate, date'0001-01-01', g_oper, t_ratedate, TGT_SECTORID     
+        select TGT_NEWRATEID, TGT_FIID, TGT_BASEFIID, 'Курс для ' || TGT_BASEFIID, chr(1), TGT_TYPE, TGT_ISDOMINANT, TGT_ISRELATIVE, TGT_MARKETID, TGT_MARKETID, chr(0), TGT_RATE, T_SCALE, T_POINT, t_instancedate, date'0001-01-01', g_oper, t_ratedate, TGT_SECTORID     
         from dtxcourse_tmp where TGT_ISLASTDATE = 'X' and TGT_NEWRATEID IS NOT NULL AND T_REPLSTATE=0;
         WRITE_LOG_FINISH('Вставка в DRATEDEF', 70);
-        commit;
+        --commit;
         
         -- для всех остальных (вставок и изменений) обновляем значение в dratedef_dbt
         merge into dratedef_dbt tgt
@@ -1061,14 +1128,14 @@ is
         set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
             tgt.T_INPUTTIME=date'0001-01-01', tgt.T_OPER=g_oper, tgt.T_SINCEDATE=sou.T_RATEDATE;
         WRITE_LOG_FINISH('Обновление DRATEDEF', 70);
-        commit;
+        --commit;
 
         -- вставка в dratehist_Dbt
         insert /*+ append */ into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
         select nvl(TGT_RATEID,TGT_NEWRATEID), chr(0),  TGT_RATE, T_SCALE, T_POINT, T_INSTANCEDATE, date'0001-01-01', g_oper, T_RATEDATE, CHR(0)
         from dtxcourse_tmp where t_replstate=0 and t_action=1 and TGT_ISLASTDATE is null;
         WRITE_LOG_FINISH('Вставка в DRATEHIST', 70);
-        commit;
+        --commit;
 
         -- обновляем значение в dratehist_dbt для action=2
         merge into dratehist_dbt tgt
@@ -1078,7 +1145,7 @@ is
         set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
             tgt.T_INPUTTIME=date'0001-01-01', tgt.T_OPER=g_oper;
         WRITE_LOG_FINISH('Обновление DRATEHIST', 70);        
-        commit;
+        --commit;
         
         -- удаляем значение из dratehist_dbt для acction=3
         delete from dratehist_dbt where (t_rateid, t_sincedate) in
@@ -1088,9 +1155,62 @@ is
         
         -- потом добавить удаление последнего значения курса - из dratedef_dbt. Исходное решение на макросах этого не умело, значит, не критично
 
+        --=====================================================================================
+        --=====================================================================================
+        
+        deb('Заполняем dtxreplobj_Dbt');
+        delete from dtxreplobj_dbt where t_objecttype=70 and t_objectid in 
+        (select t_courseid from dtxcourse_tmp where t_replstate=0 and t_action = 1);
+
+        insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) 
+        select 70, t_courseid, t_type, nvl(tgt_rateid, tgt_newrateid), 1, 0  
+        from dtxcourse_tmp where t_replstate=0 and t_action=1;
+        
+        update dtxreplobj_dbt set t_objstate=2 where (T_OBJECTTYPE, T_OBJECTID) in   
+        (select 70, t_courseid from dtxcourse_tmp where t_replstate=0 and t_action=3);
+        WRITE_LOG_FINISH('Вставка записей в DTXREPLOBJ', 70);
+        
+        update dtxcourse_dbt set t_replstate=1 where (t_courseid, t_instancedate) in
+        (select t_courseid, t_instancedate from dtxcourse_tmp where t_replstate=0); 
+        
+
         deb('Завершена процедура COURSES_CREATE_RECORDS');
     end courses_create_records;
 
+
+
+    -- формирует записи в целевой системе на основе таблицы снимка
+    procedure comiss_create_records
+    is
+        l_counter number := 0;  -- счетчик обработанных строк
+    begin
+        deb('Запущена процедура COMISS_CREATE_RECORDS');
+        
+        -- Обработка вставок
+        WRITE_LOG_START;
+        deb('Заполнение ');
+        
+        
+        --=====================================================================================
+        --=====================================================================================
+        
+        deb('Заполняем dtxreplobj_Dbt');
+        delete from dtxreplobj_dbt where t_objecttype=100 and t_objectid in 
+        (select t_comissid from dtxcomiss_tmp where t_replstate=0 and t_action = 1);
+
+        insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) 
+        select 100, t_comissid, t_type, tgt_comissid, 1, 0  
+        from dtxcomiss_tmp where t_replstate=0 and t_action=1;
+        
+        update dtxreplobj_dbt set t_objstate=2 where (T_OBJECTTYPE, T_OBJECTID) in   
+        (select 100, t_comissid from dtxcomiss_tmp where t_replstate=0 and t_action=3);
+        WRITE_LOG_FINISH('Вставка записей в DTXREPLOBJ', 100);
+        
+        update dtxcomiss_dbt set t_replstate=1 where (t_comissid, t_instancedate) in
+        (select t_comissid, t_instancedate from dtxcomiss_tmp where t_replstate=0);         
+
+        deb('Завершена процедура COMISS_CREATE_RECORDS');
+    end comiss_create_records;
 
 
     procedure load_deals_by_period(p_startdate date, p_enddate date default null)
@@ -1192,11 +1312,48 @@ is
         -- переносит ошибки в таблицу логов dtxloadlog_dbt
         write_errors_into_log;
         
-        -- формирует записи в таблицы целевой системы (DDL_RQ_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
+        -- формирует записи в таблицы целевой системы (DRATEDEF_DBT, DRATEHIST_DBT...) на основе таблицы снимка
         courses_create_records;
 
         deb('Завершена процедура LOAD_COURSES_BY_PERIOD');
     end load_courses_by_period;
+
+
+
+
+    procedure load_comiss_by_period(p_startdate date, p_enddate date default null)
+    is
+        l_enddate date;
+    begin
+        deb('Запущена процедура LOAD_COMISS_BY_PERIOD');
+                
+        l_enddate := nvl( p_enddate, p_startdate + 1 - 1/24/60/60); 
+    
+        -- Если SESSION_ID был не зназначен, то есть, LOAD_DEALS вызвали вручную, назначим его
+        if g_SESSION_ID is null then
+            insert into dtx_session_dbt(t_startdate, t_enddate, t_user, t_status)
+            values( p_startdate, l_enddate, user, 'R') returning t_sessid into g_SESSION_ID;
+        end if;
+        
+        insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
+        values (g_SESSION_ID, 'LOAD_COURSES', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
+        commit;
+    
+        -- заполняет таблицу снимка (dtxcomiss_tmp из dtxcomiss_dbt)
+        comiss_create_snapshot(p_startdate, l_enddate);
+        
+        -- прогоняет сеты запросов по таблице снимка dtxcomiss_tmp
+        run_all_queries( 100 );
+        
+        -- переносит ошибки в таблицу логов dtxloadlog_dbt
+        write_errors_into_log;
+        
+        -- формирует записи в таблицы целевой системы на основе таблицы снимка
+        comiss_create_records;
+
+        deb('Завершена процедура LOAD_COMISS_BY_PERIOD');
+    end load_comiss_by_period;
+
 
 
 
