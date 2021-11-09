@@ -12,6 +12,8 @@ is
     g_ourbank constant number := 12;        -- Код нашего банка. Проверить
     g_department  constant number := 1;     -- Департамент по умолчанию. См. ddp_dep_dbt
     
+    g_use_needdemand constant boolean := true;  -- Использовать NEEDDEMAND в сделках. Поскольку многие банки не используют его в принципе, нет смысла прогонять каждый раз запросы
+    
     c_DEFAULT_FICTFI  constant number := 2192;  -- Фиктивный FIID для сделки с корзиной, по умолчанию.
         
     -- константы типов
