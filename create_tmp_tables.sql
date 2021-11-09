@@ -180,7 +180,7 @@ CREATE TABLE DTXCOURSE_TMP
   T_POINT             NUMBER(5),
   T_SCALE             NUMBER(10),
   T_RATEDATE          DATE,
-  T_RATE              FLOAT(53),
+  T_RATE              NUMBER,
   TGT_RATEID          NUMBER(15),
   TGT_TYPE            NUMBER(5),
   TGT_MARKETID        NUMBER(15),
@@ -193,7 +193,11 @@ CREATE TABLE DTXCOURSE_TMP
   TGT_ISRELATIVE      CHAR(1 CHAR),
   TGT_ISBOND          CHAR(1 CHAR),
   TGT_FACEVALUE_FIID  NUMBER(15),
-  TGT_BASEFIKIND      NUMBER
+  TGT_BASEFIKIND      NUMBER,
+  TGT_LAST_DATE_RSS   DATE,
+  TGT_LAST_DATE_DTX   DATE,
+  TGT_NEWRATEID       NUMBER(15),
+  TGT_RATE            NUMBER
 )
 LOGGING 
 MONITORING;
@@ -222,6 +226,13 @@ COMMENT ON COLUMN DTXCOURSE_TMP.TGT_FACEVALUE_FIID IS 'Валюта номинала, если это
 
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_BASEFIKIND IS 'Вид базового иинсструмента, если это бумага';
 
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_LAST_DATE_RSS IS 'Последняя дата курса, заданная в dratedef.';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_LAST_DATE_DTX IS 'Максимальная дата по курсу среди находящихся в DTXCOUSE';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_NEWRATEID IS 'Поле для сгенерированного ID для DRATEDEF_DBT, если такого курса еще не было вообще';
+
+COMMENT ON COLUMN DTXCOURSE_TMP.TGT_RATE IS 'Значение T_RATE, отмасштабированное по t_point';
 
 
 

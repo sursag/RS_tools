@@ -8,6 +8,186 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
+   (70, 1, 10, 'update /*+ parallel(4) */ DTXCOURSE_TMP set'||CHR(10)||'T_TYPE=nvl(T_TYPE,0), T_BASEFIID=nvl(T_BASEFIID,0), T_FIID=nvl(T_FIID,0), T_MARKETID=nvl(T_MARKETID,0), T_MARKETSECTORID=nvl(T_MARKETSECTORID,0), T_POINT=nvl(T_POINT,0), T_SCALE=nvl(T_SCALE,0),    '||CHR(10)||'', 1, 
+    'Обработка записи NVL', 'Обработка записей NVL', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 303 from dtxcourse_tmp where t_type=0 and t_action in (1,2)', 1, 
+    'Ошибка: для курса не задан вид', 'Проверка вида курса', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 304 from dtxcourse_tmp where t_rate=0 and t_action in (1,2)', 1, 
+    'Ошибка: для курса не задано значение', 'Проверка значения курса', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 301 from dtxcourse_tmp where T_MARKETID=0 and t_action in (1,2)', 1, 
+    'Ошибка: для курса не задана торговая площадка', 'Проверка торговой площадки курса', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 2, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 305 from dtxcourse_tmp where T_BASEFIID=0 and t_action in (1,2)', 1, 
+    'Ошибка: для курса не задан базовый финансовый инструмент', 'Проверка базового финансового инструмента', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 2, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 310 from dtxcourse_tmp where T_BASEFIID=0 and t_action in (1,2)', 1, 
+    'Ошибка: для курса не задан котируемый финансовый инструмент', 'Проверка котируемого финансового инструмента', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 10, 'merge /*+ # */ into dtxcourse_tmp tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=30 and t_objstate=0) sou on (sou.t_objectid=tgt.T_MARKETID)'||CHR(10)||'when matched then update set tgt.TGT_MARKETID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_MARKETID', 'Добавление TGT_MARKETID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 15, 'update /*+ # */ DTXCOURSE_TMP set TGT_ISNOMINAL=chr(88) where t_type=100     '||CHR(10)||'', 1, 
+    'Обогащение записи - добавление TGT_ISNOMINAL', 'Добавление TGT_ISNOMINAL', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 20, 'merge /*+ # */ into dtxcourse_tmp tgt '||CHR(10)||'using (select t_objectid, t_subobjnum, t_destid from dtxreplobj_dbt where t_objecttype=40 and t_objstate=0) sou on (sou.t_objectid=tgt.T_MARKETID and sou.t_subobjnum=tgt.T_MARKETSECTORID)'||CHR(10)||'when matched then update set tgt.TGT_SECTORID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_SECTORID', 'Добавление TGT_SECTORID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 30, 'merge /*+ # */ into dtxcourse_tmp tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=20 and t_objstate=0) sou on (sou.t_objectid=tgt.T_BASEFIID)'||CHR(10)||'when matched then update set tgt.TGT_BASEFIID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_BASEFIID', 'Добавление TGT_BASEFIID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 40, 'merge /*+ # */ into (select * from dtxcourse_tmp where t_basefikind=10) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=10 and t_objstate=0) sou on (sou.t_objectid=tgt.T_FIID)'||CHR(10)||'when matched then update set tgt.TGT_FIID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_FIID (деньги)', 'Добавление TGT_FIID (деньги)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 50, 'merge /*+ # */ into (select * from dtxcourse_tmp where t_basefikind=20) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=20 and t_objstate=0) sou on (sou.t_objectid=tgt.T_FIID)'||CHR(10)||'when matched then update set tgt.TGT_FIID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_FIID (бумаги)', 'Добавление TGT_FIID (бумаги)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 55, 'merge into (select * from dtxcourse_tmp where t_basefikind=20) tgt '||CHR(13)||CHR(10)||'using (select t_fiid, t_root from dfininstr_dbt f join davrkinds_dbt k on (f.T_AVOIRKIND=k.T_AVOIRKIND)) sou '||CHR(13)||CHR(10)||'on (sou.t_fiid=tgt.TGT_BASEFIID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_BASEFIKIND=sou.T_ROOT'||CHR(13)||CHR(10)||'', 1, 
+    'Обогащение записи - добавление TGT_BASEFIKIND', 'Добавление TGT_BASEFIKIND', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 60, 'update /*+ # */ DTXCOURSE_TMP set TGT_ISDOMINANT=chr(88) where t_type=6 and t_basefikind=10     '||CHR(10)||'', 1, 
+    'Обогащение записи - добавление TGT_ISDOMINANT', 'Добавление TGT_ISDOMINANT', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 70, 'update /*+ # */ DTXCOURSE_TMP set TGT_TYPE=load_rss.getratetype(t_type)     '||CHR(10)||'', 1, 
+    'Обогащение записи - добавление TGT_TYPE', 'Добавление TGT_TYPE', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 80, 'merge /*+ # */ into (select * from dtxcourse_tmp where t_basefikind=20) tgt '||CHR(13)||CHR(10)||'using (select * from dfininstr_dbt) sou on (sou.t_fiid=tgt.TGT_BASEFIID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_FACEVALUE_FIID=sou.T_FACEVALUEFI', 1, 
+    'Обогащение записи - добавление TGT_FACEVALUE_FIID (если базовый инструмент - бумага)', 'Добавление TGT_FACEVALUE_FIID (для бумаг)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 90, 'update /*+ # */ DTXCOURSE_TMP set TGT_ISRELATIVE=chr(88) where TGT_BASEFIKIND=17 and T_TYPE<>15', 1, 
+    'Обогащение записи - добавление TGT_ISRELATIVE,если бумага-облигация и вид курса - не НКД на дату', 'Добавление TGT_ISRELATIVE', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 100, 'merge /*+ # */ into (select * from dtxcourse_tmp where tgt_isnominal is null) tgt '||CHR(13)||CHR(10)||'using (select * from dratedef_dbt) sou on (sou.T_OTHERFI=TGT_BASEFIID and sou.t_fiid=TGT_FIID and sou.t_type=TGT_TYPE and sou.t_market_place=TGT_MARKETID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_RATEID=sou.T_RATEID, tgt.TGT_LAST_DATE_RSS=sou.T_SINCEDATE', 1, 
+    'Обогащение записи - добавление TGT_RATEID / TGT_LAST_DATE_RSS', 'Добавление TGT_RATEID / TGT_LAST_DATE_RSS', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 105, 'update /*+ # */ DTXCOURSE_TMP tgt set TGT_LAST_DATE_DTX = (select max(t_ratedate) from DTXCOURSE_TMP where tgt_rateid=tgt.tgt_rateid)', 1, 
+    'Обогащение записи - добавление TGT_LAST_DATE_DTX - максимальной даты по курсу сруди находящихся в DTXCOURSE_TMP', 'Добавление TGT_LAST_DATE_DTX (последняя дата по курсу в DTXCOURSE)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 110, 'update dtxcourse_tmp tgt  set TGT_ISLASTDATE=chr(88) '||CHR(13)||CHR(10)||'where t_ratedate = TGT_LAST_DATE_DTX '||CHR(13)||CHR(10)||'and (TGT_LAST_DATE_DTX > TGT_LAST_DATE_RSS or TGT_LAST_DATE_RSS is null)  ', 1, 
+    'Обогащение записи - добавление TGT_ISLASTDATE - признак того, что это значение обновляет DRATEDEF и не надо отправлять его в DRATEHIST', 'Добавление TGT_ISLASTDATE (флаг, что это значение идёт в dratedef)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 120, 'update dtxcourse_tmp set tgt_newrateid=dratedef_dbt_seq.nextval '||CHR(13)||CHR(10)||'where TGT_RATEID is null and TGT_ISLASTDATE = chr(88) and t_action=1'||CHR(13)||CHR(10)||'', 1, 
+    'Для нового курса назначаем tgt_newrateid, который потом пойдет в DRATEDEF_DBT.T_RATEID. Сначала назначаем его последнему значению курса (TGT_ISLASTDATE)', 'Для нового курса назначаем TGT_NEWRATEID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 130, 'merge into (select * from dtxcourse_tmp where TGT_RATEID is null and T_ACTION=1 and TGT_ISLASTDATE is null) tgt'||CHR(13)||CHR(10)||'using (select * from dtxcourse_tmp where TGT_NEWRATEID is not null) sou'||CHR(13)||CHR(10)||'on (sou.t_basefiid = tgt.t_basefiid and sou.t_type = tgt.t_type and sou.t_fiid = tgt.t_fiid and sou.T_MARKETID = tgt.T_MARKETID and sou.T_MARKETSECTORID = tgt.T_MARKETSECTORID) '||CHR(13)||CHR(10)||'when matched then update set tgt.tgt_newrateid = sou.tgt_newrateid'||CHR(13)||CHR(10)||'', 1, 
+    'Распространяем новый TGT_NEWRATEID среди остальных значений курса', 'Распространяем новый TGT_NEWRATEID среди значений курса', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 3, 140, 'update DTXCOURSE_TMP set TGT_RATE = T_RATE * power(10, t_point)', 1, 
+    'Обогащение записи - добавление TGT_RATE', 'Добавление TGT_RATE', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 302 from dtxcourse_tmp where TGT_MARKETID is null', 1, 
+    'Ошибка: торговая площадка не найдена в replobj_dbt', 'Проверка торговой площадки в RSS', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 4, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 306 from dtxcourse_tmp where TGT_BASEFIID is null', 1, 
+    'Ошибка: базовый финансоввый инструмент не найден в replobj_dbt', 'Проверка базового финиинструмента в RSS', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 4, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 311 from dtxcourse_tmp where TGT_FIID is null', 1, 
+    'Ошибка: котируемый финансоввый инструмент не найден в replobj_dbt', 'Проверка котируемого финиинструмента в RSS', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 4, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 321 from dtxcourse_tmp where TGT_RATEID is null and t_action=2', 1, 
+    'Ошибка: курс не найден в целевой системе', 'Проверка наличия курса в RSS для обновлений', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 4, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 322 from dtxcourse_tmp where TGT_RATEID is null and t_action=3', 1, 
+    'Ошибка: курс не найден в целевой системе (для удалений)', 'Проверка наличия курса в RSS для удалений', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 4, 70, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 340 from dtxcourse_tmp sou left join dratehist_dbt h '||CHR(13)||CHR(10)||'on (sou.tgt_rateid=h.t_rateid and sou.t_ratedate=h.t_sincedate)'||CHR(13)||CHR(10)||'where (h.T_RATEID is null and nvl(sou.TGT_LAST_DATE_RSS,date''0001-01-01'')<>t_ratedate and t_action in (2,3))', 1, 
+    'Для изменений/удалений проверяем, есть ли такой курс за такую дату в DRATEHIST_DBT или в DRATEDEF_DBT(откуда он уже перешел в TGT_LAST_DATE_RSS) ', 'Проверка наличия значения курса в RSS для изменений/удалений', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (70, 4, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, 70, sysdate, t_courseid, 340 from dtxcourse_tmp sou left join dratehist_dbt h on (sou.tgt_rateid=h.t_rateid and sou.t_ratedate=h.t_sincedate)'||CHR(10)||'where (h.T_RATEID > 0 or sou.TGT_LAST_DATE_RSS=t_ratedate and t_action = 1)', 1, 
+    'Для вставок проверяем, есть ли уже такой курс за такую дату в DRATEHIST_DBT или в DRATEDEF_DBT(откуда он уже перешел в TGT_LAST_DATE_RSS) ', 'Проверка наличия значения курса в RSS для вставок (action=1)', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
    (80, 1, 10, 'update dtxdeal_tmp set T_EXTCODE = trim(T_EXTCODE), T_MARKETCODE = trim(T_MARKETCODE), '||CHR(13)||CHR(10)||'T_PARTYCODE = trim(T_PARTYCODE), T_CODE = trim(T_CODE), t_conditions=trim(t_conditions),'||CHR(13)||CHR(10)||'T_CONTRNUM=trim(T_CONTRNUM), T_DOPCONTROL_NOTE=trim(T_DOPCONTROL_NOTE), T_PRICE_CALC_MET_NOTE=trim(T_PRICE_CALC_MET_NOTE)', 1, 
     'Форматирование записи - TRIM текстовых полей', 'TRIM текстовых полей', NULL, 'X');
 Insert into DTX_QUERY_DBT
@@ -110,7 +290,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 3, 70, 'merge /*+ parallel(4) */ into dtxdeal_tmp tgt '||CHR(10)||'using dfininstr_dbt sou on (sou.t_fiid=tgt.TGT_AVOIRISSID)'||CHR(10)||'when matched then update set tgt.TGT_AVOIRKIND=sou.t_avoirkind'||CHR(10)||'', 1, 
+   (80, 3, 70, 'merge into dtxdeal_tmp tgt '||CHR(13)||CHR(10)||'using (select t_fiid, t_root from dfininstr_dbt f join davrkinds_dbt k on (f.T_AVOIRKIND=k.T_AVOIRKIND)) sou '||CHR(13)||CHR(10)||'on (sou.t_fiid=tgt.TGT_AVOIRISSID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_AVOIRKIND=sou.T_ROOT'||CHR(13)||CHR(10)||'', 1, 
     'Обогащение записи - добавление TGT_AVOIRKIND', 'Добавление TGT_AVOIRKIND', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -237,7 +417,7 @@ Insert into DTX_QUERY_DBT
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
    (80, 3, 300, 'update /*+ parallel(4) */ DTXDEAL_TMP set'||CHR(13)||CHR(10)||'TGT_ISQUOTED = LOAD_RSS.GETISQUOTED(TGT_AVOIRISSID, T_INSTANCEDATE),'||CHR(13)||CHR(10)||'TGT_ISKSU = LOAD_RSS.GETISKSU(TGT_AVOIRISSID),'||CHR(13)||CHR(10)||'TGT_ISBOND = decode(TGT_AVOIRKIND, 17, chr(88), chr(0)) '||CHR(13)||CHR(10)||'', 1, 
-    'Обогащение записи - добавление TGT_ISQUOTED / TGT_ISKSU / TGT_ISBOND', 'Добавление TGT_ISQUOTED / TGT_ISKSU/TGT_ISBOND', NULL, 'X');
+    'Обогащение записи - добавление TGT_ISQUOTED / TGT_ISKSU / TGT_ISBOND', 'Добавление TGT_ISQUOTED / TGT_ISKSU / TGT_ISBOND', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
@@ -327,7 +507,13 @@ Insert into DTX_QUERY_DBT
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
    (90, 3, 10, 'merge /*+ # */ into (select * from dtxdemand_tmp where t_replstate=0 ) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=90 and t_objstate=0) sou on (sou.t_objectid=tgt.T_DEMANDID)'||CHR(10)||'when matched then update set tgt.TGT_DEMANDID=sou.T_DESTID', 1, 
-    'Обогащение записи - добавление TGT_DEMANDID', 'Добавление TGT_DEMANDID', NULL, 'X');
+    'Обогащение записи - поиск TGT_DEMANDID для обновлений/удалений', 'Добавление TGT_DEMANDID для обновлений/удалений (action 2,3)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (90, 3, 12, 'update dtxdemand_tmp set TGT_DEMANDID=ddlrq_dbt_seq.nextval where t_action=1 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_DEMANDID для вставок (action=1)', 'Добавление TGT_DEMANDID для вставок (action=1)', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
@@ -364,12 +550,6 @@ Insert into DTX_QUERY_DBT
  Values
    (90, 3, 70, 'merge /*+ # */ into (select * from dtxdemand_tmp) tgt '||CHR(10)||'   using (select t_dealid, T_MARKETID, T_PARTYID from ddl_tick_dbt) sou on (sou.t_dealid=tgt.TGT_DEALID) '||CHR(10)||'   when matched then update set tgt.TGT_PARTY= case when sou.T_MARKETID>0 then T_MARKETID else T_PARTYID end', 1, 
     'Обогащение записи - добавление TGT_PARTY', 'Добавление TGT_PARTY', NULL, 'X');
-Insert into DTX_QUERY_DBT
-   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
-    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
- Values
-   (90, 3, 80, 'update dtxdemand_tmp set TGT_DEMANDID=ddlrq_dbt_seq.nextval where t_action=1 and t_replstate=0', 1, 
-    'Обогащение записи - добавление TGT_DEALID для вставок (action=1)', 'Добавление TGT_DEALID для вставок (action=1)', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)

@@ -321,6 +321,8 @@ is
             execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOURSE_ACTION ON DTXCOURSE_TMP(T_ACTION)';
             execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOURSE_KIND ON DTXCOURSE_TMP(T_KIND)';
             execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOURSE_REPLSTATE ON DTXCOURSE_TMP(T_REPLSTATE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOURSE_ISLASTDATE ON DTXCOURSE_TMP(TGT_ISLASTDATE)';
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXCOURSE_ISNOMINAL ON DTXCOURSE_TMP(TGT_ISNOMINAL)';
         exception when others then
             deb('Ошибка при создании индексов на снимке');
         end;
@@ -835,7 +837,7 @@ is
     -- формирует записи в целевой системе на основе таблицы снимка
     procedure demands_create_records
     is
-        l_counter number := 0;  -- счтчик обработанных строк
+        l_counter number := 0;  -- счетчик обработанных строк
     begin
         deb('Запущена процедура DEMANDS_CREATE_RECORDS');
         execute immediate 'alter trigger DDLRQ_DBT_TBI disable';
@@ -936,13 +938,65 @@ is
     -- формирует записи в целевой системе на основе таблицы снимка
     procedure courses_create_records
     is
+        l_counter number := 0;  -- счетчик обработанных строк
     begin
         deb('Запущена процедура COURSES_CREATE_RECORDS');
         
         -- Обработка вставок
         WRITE_LOG_START;
-        deb('Заполнение DDL_TICK_DBT (t_action=1)');
+        deb('Заполнение DRATEDEF_DBT');
 
+        -- Значение из DRATEDEF_DBT преходит в историю, если среди новых записей по этому курсу есть одна с флажком TGT_ISLASTDATE
+        insert into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
+        select T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT  
+        from  dratedef_dbt where t_rateid in (select tgt_rateid from dtxcourse_tmp where TGT_ISLASTDATE=chr(88) and t_action=1 and t_replstate=0);
+        --l_counter := l_counter + sql%rowcount;
+        WRITE_LOG_FINISH('Перенос DRATEDEF в DRATEHIST', 70); 
+        commit;
+
+        -- сработает только для вставки (TGT_NEWRATEID есть только у нее)
+        -- если курс в dratedef_dbt отсутствует вообще, добавим его. tgt_rateid уже есть
+        -- пойдет строка с TGT_ISLASTDATE = 'X' и TGT_NEWRATEID IS NOT NULL
+        insert into dratedef_dbt(T_RATEID, T_FIID, T_OTHERFI, T_NAME, T_DEFINITION, T_TYPE, T_ISDOMINANT, T_ISRELATIVE, T_INFORMATOR, T_MARKET_PLACE, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_SECTION)
+        select TGT_NEWRATEID, TGT_FIID, TGT_BASEFIID, 'Курс для ' || TGT_BASEFIID, chr(1), TGT_TYPE, TGT_ISDOMINANT, TGT_ISRELATIVE, TGT_MARKETID, TGT_MARKETID, TGT_MARKETID, TGT_RATE, T_SCALE, T_POINT, t_instancedate, date'0001-01-01', g_oper, t_ratedate, TGT_SECTORID     
+        from dtxcourse_tmp where TGT_ISLASTDATE = 'X' and TGT_NEWRATEID IS NOT NULL AND T_REPLSTATE=0;
+        WRITE_LOG_FINISH('Вставка в DRATEDEF', 70);
+        commit;
+        
+        -- для всех остальных (вставок и изменений) обновляем значение в dratedef_dbt
+        merge into dratedef_dbt tgt
+        using (select * from dtxcourse_tmp where TGT_ISLASTDATE = 'X') sou
+        on (sou.tgt_rateid = tgt.t_rateid)
+        when matched then update 
+        set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
+            tgt.T_INPUTTIME=date'0001-01-01', tgt.T_OPER=g_oper, tgt.T_SINCEDATE=sou.T_RATEDATE;
+        WRITE_LOG_FINISH('Обновление DRATEDEF', 70);
+        commit;
+
+        -- вставка в dratehist_Dbt
+        insert /*+ append */ into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
+        select nvl(TGT_RATEID,TGT_NEWRATEID), chr(0),  TGT_RATE, T_SCALE, T_POINT, T_INSTANCEDATE, date'0001-01-01', g_oper, T_RATEDATE, CHR(0)
+        from dtxcourse_tmp where t_replstate=0 and t_action=1 and TGT_ISLASTDATE is null;
+        WRITE_LOG_FINISH('Вставка в DRATEHIST', 70);
+        commit;
+
+        -- обновляем значение в dratehist_dbt для action=2
+        merge into dratehist_dbt tgt
+        using (select * from dtxcourse_tmp where TGT_ISLASTDATE is null and t_action=2 and t_replstate=0) sou
+        on (sou.tgt_rateid = tgt.t_rateid and tgt.T_SINCEDATE=sou.T_RATEDATE)
+        when matched then update 
+        set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
+            tgt.T_INPUTTIME=date'0001-01-01', tgt.T_OPER=g_oper;
+        WRITE_LOG_FINISH('Обновление DRATEHIST', 70);        
+        commit;
+        
+        -- удаляем значение из dratehist_dbt для acction=3
+        delete from dratehist_dbt where (t_rateid, t_sincedate) in
+        (select tgt_rateid, T_RATEDATE from dtxcourse_tmp where t_replstate=0 and t_action=3);
+        WRITE_LOG_FINISH('Удаление из DRATEHIST', 70);
+        commit;
+        
+        -- потом добавить удаление последнего значения курса - из dratedef_dbt. Исходное решение на макросах этого не умело, значит, не критично
 
         deb('Завершена процедура COURSES_CREATE_RECORDS');
     end courses_create_records;
