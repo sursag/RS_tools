@@ -668,7 +668,9 @@ is
         WRITE_LOG_FINISH('Запись REPLSTATE в DSPGROUND_DBT / DSPGRDOC_DBT', 80);
         commit;
         
-        ----------------------------------------------------------------------------
+        --==========================================================================
+        --==========================================================================
+        
         WRITE_LOG_START;
         deb('Запись примечаний к сделкам'); 
         
@@ -729,6 +731,9 @@ is
         WRITE_LOG_FINISH('Запись новых примечаний к сделкам', 80, p_count => l_count);
         commit;
         
+        
+        --==========================================================================
+        --==========================================================================
                
         WRITE_LOG_START;
         deb('Запись категорий к сделкам');
@@ -830,6 +835,7 @@ is
     -- формирует записи в целевой системе на основе таблицы снимка
     procedure demands_create_records
     is
+        l_counter number := 0;  -- счтчик обработанных строк
     begin
         deb('Запущена процедура DEMANDS_CREATE_RECORDS');
         execute immediate 'alter trigger DDLRQ_DBT_TBI disable';
@@ -839,7 +845,7 @@ is
         WRITE_LOG_START;
         deb('Заполнение DDLRQ_DBT (t_action=1)');
         insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL)
-        select TGT_DEALID, TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, T_PART, TGT_KIND/*T_KIND*/, TGT_SUBKIND, TGT_TYPE, 0 /*T_NUM*/, T_SUM, TGT_FIID, TGT_PARTY, -1, -1/*T_PLACEID*/, TGT_STATE, TGT_PLANDATE, TGT_FACTDATE, CHR(0), CHR(0)/*T_NETTING*/, null, 0, TGT_CHANGEDATE, 0 /*T_ACTION*/, 0, 2908, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
+        select TGT_DEMANDID, TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, T_PART, TGT_KIND/*T_KIND*/, TGT_SUBKIND, TGT_TYPE, 0 /*T_NUM*/, T_SUM, TGT_FIID, TGT_PARTY, -1, -1/*T_PLACEID*/, TGT_STATE, TGT_PLANDATE, TGT_FACTDATE, CHR(0), CHR(0)/*T_NETTING*/, null, 0, TGT_CHANGEDATE, 0 /*T_ACTION*/, 0, 2908, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
         from dtxdemand_tmp where t_replstate=0 and t_action=1;
         WRITE_LOG_FINISH('Заполнение DDLRQ_DBT (t_action=1)', 90); 
         
@@ -895,6 +901,30 @@ is
         commit;
         
         ----------------------------------------------------------------------------
+        
+        
+        WRITE_LOG_START;
+        deb('Запись примечаний к сделкам'); 
+        
+        delete /*+ parallel(8) */ from dnotetext_dbt where T_OBJECTTYPE=993 and T_DOCUMENTID in (
+        select lpad( tgt_demandid, 10, '0') from dtxdemand_tmp where t_replstate=0 ); 
+        WRITE_LOG_FINISH('Удаление старых примечаний к платежам', 90);
+        commit;
+        
+        -- t_note примечание по платежу
+        insert /*+ parallel(4) */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 993, lpad( tgt_demandid, 10, '0'), 101, g_oper, t_date, date'0001-01-01', T_NOTE, date'4000-01-01'
+        from dtxdemand_tmp where t_replstate=0 and T_NOTE is not null;
+        l_counter := l_counter + sql%rowcount;
+        
+        -- t_note курс постановки на баланс
+        insert /*+ parallel(4) */ into dnotetext_dbt(T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select 993, lpad( tgt_demandid, 10, '0'), 101, g_oper, t_date, date'0001-01-01', to_char(T_BALANCERATE), date'4000-01-01'
+        from dtxdemand_tmp where t_replstate=0 and T_BALANCERATE is not null;
+        l_counter := l_counter + sql%rowcount;
+        WRITE_LOG_FINISH('Запись новых примечаний к платежам', 90, p_count => l_counter);        
+        commit;
+                
         
         
         execute immediate 'alter trigger DDLRQ_DBT_TBI enable';
