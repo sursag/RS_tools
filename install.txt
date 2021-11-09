@@ -1,0 +1,9 @@
+В состав решения входят следующие скрипты (запускать в указанном порядке):
+
+create_tables.sql
+create_tmp_tables.sql
+Fill_query_table.sql
+LOAD_RSS.pks
+LOAD_RSS.pkb
+
+Остальные скрипты в папке с префиксами '_' служат для описания и отладки
