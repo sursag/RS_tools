@@ -4,16 +4,12 @@ is
     -- Пакет загрузки данных в процессе репликации из таблиц DTX* в таблицы Rs-Bank 
 
     g_fictfi             number; -- код fiid, соответствующий в целевой системе корзине бумаг
-    deb_flag             number := 0; -- для процедуры логирования. Уровень вложенности записей логов, для отсутпов
+    deb_flag             number := 0; -- для процедуры логирования. Уровень вложенности записей логов, для отступов
 
     write_query_log_start date; -- переменная для процедуры write_query_log
 
 
     ---- для оценки производительности -----------------------------------------
-    procedure_start_date timestamp;
-    procedure_exec_interval interval day to second;
-    tmp_date_perf date;
-    tmp_num_perf number;
     deb_start_timestamp timestamp;
 
 
@@ -81,9 +77,6 @@ is
     begin
         -- для производительности
         -- лимит важности в спецификации пакета. Если переданное значение выше, сообщение не записывается.
-        if not (g_debug_output or g_debug_table) or (p_level > g_debug_level_current)
-        then return;
-        end if;
 
         if upper(p_text) like 'ЗАВЕРШЕНА%ПРОЦЕДУРА%'
         then
@@ -379,14 +372,22 @@ is
     begin
         deb('Запущена процедура WRITE_ERRORS_INTO_LOG');
         WRITE_LOG_START;
+        -- обновим поле T_SEVERITY в таблице ошибок. Оно задается на запросе в таблице DTX_QUERY_DBT. Непосредственно при заполнении таблицы ошибок проставиться не может,
+        -- поскольку сам запрос не знает своего t_severity, как и остальных своих метаданных
+        -- перенесено на момент заполнения таблицы ошибок
+        -- merge into (select * from dtx_error_dbt where is_logged is null and t_sessid=G_SESSION_ID and T_DETAILID=g_SESS_DETAIL_ID) tgt
+        -- using dtx_query_dbt sou on (sou.t_screenid=tgt.t_queryid)
+        -- when matched then update set tgt.T_SEVERITY = sou.T_SEVERITY;
+        
+        -- теперь внесем в лог ошибки и предупреждения
         insert /*+ append */ into dtxloadlog_dbt(T_MSGTIME, T_MSGCODE, T_SEVERITY, T_OBJTYPE, T_OBJECTID, T_SUBOBJNUM, T_FIELD, T_MESSAGE, T_INSTANCEDATE)
-        select er.T_TIMESTAMP, er.T_ERRORCODE, 1, er.T_OBJECTTYPE, er.T_OBJECTID, 0, '', erk.T_DESC,  ss.T_INSTANCEDATE
+        select er.T_TIMESTAMP, er.T_ERRORCODE, T_SEVERITY, er.T_OBJECTTYPE, er.T_OBJECTID, 0, '', erk.T_DESC,  ss.T_INSTANCEDATE
         from dtx_error_dbt er 
         join DTX_SESS_DETAIL_DBT ss on (er.T_SESSID=ss.T_SESSID and er.T_DETAILID=ss.T_DETAILID and er.T_SESSID=g_session_id and er.T_DETAILID=g_SESS_DETAIL_ID) 
         left join dtx_errorkinds_dbt erk on (er.t_errorcode=erk.t_code)
         where er.is_logged is null; 
         
-        -- проставим признак записи на записи в таблице ошибок. Теперь можно повторно вызывать процедуру записи в течение сессии, ошибкии в логе не будут дублироваться
+        -- проставим признак записи на записи в таблице ошибок. Теперь можно повторно вызывать процедуру записи в течение сессии, ошибки в логе не будут дублироваться
         update dtx_error_dbt set is_logged=chr(88) where rowid in (select rowid from dtx_error_dbt where is_logged is null and t_sessid=G_SESSION_ID and T_DETAILID=g_SESS_DETAIL_ID);
         WRITE_LOG_FINISH('Переносим ошибки в общий лог', 0);
         commit;         
@@ -524,7 +525,7 @@ is
                 begin
                     WRITE_LOG_START;
                     if q_rec.t_use_bind = 'X' then
-                        execute immediate q_rec.t_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_screenid;
+                        execute immediate q_rec.t_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_screenid, q_rec.t_severity;
                     else
                         execute immediate q_rec.t_text;
                     end if;
@@ -567,13 +568,9 @@ is
         
         run_one_query_set(p_objecttype, 1);
        
-
-        deb('Второй сет запросов. Заполнение таблицы ошибок');
-        -- Второй сет запросов, проверяем заполнение полей, определяем ошибки
-       
-        run_one_query_set(p_objecttype, 2);
-
-        if p_objecttype=80 then
+        -- построение индексов вынесено после первого сета, поскольку он правит поля, на которых многие из индеков строятся.
+        -- Все запросы первого сета проводятся full table scan`ом
+        if    p_objecttype=80 then
                 deals_create_indexes;
         elsif p_objecttype=90 then
                 demands_create_indexes;
@@ -582,25 +579,12 @@ is
         elsif p_objecttype=100 then
                 comiss_create_indexes;
         end if;
-        
-        -- отметим найденные ошибки. 
-        WRITE_LOG_START;
-        case p_objecttype
-        when 80 then
-            execute immediate
-            'update dtxdeal_tmp set t_replstate=2 where t_dealid in (select t_objectid from dtx_error_dbt where t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
-            --insert into dtxloadlog_dbt(T_MSGTIME, T_MSGCODE, T_SEVERITY, T_OBJTYPE, T_OBJECTID, T_SUBOBJNUM, T_FIELD, T_MESSAGE, T_CORRECTION, T_CORRUSER, T_CORRTIME, T_INSTANCEDATE)
-        when 90 then
-        execute immediate
-            'update dtxdemand_tmp set t_replstate=2 where t_demandid in (select t_objectid from dtx_error_dbt where t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
-            null;
-        when 70 then
-        execute immediate
-            'update dtxcourse_tmp set t_replstate=2 where t_courseid in (select t_objectid from dtx_error_dbt where t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
-            null;            
-        end case;
-        
-        WRITE_LOG_FINISH( 'Отмечаем в снимке найденные ошибки', p_objecttype, 0, 0);
+
+
+        deb('Второй сет запросов. Заполнение таблицы ошибок');
+        -- Второй сет запросов, проверяем заполнение полей, определяем ошибки
+       
+        run_one_query_set(p_objecttype, 2);
 
         deb('Третий сет запросов. Обогащение идентификаторами из целевой системы');
 
@@ -609,6 +593,30 @@ is
         deb('Четвертый сет запросов. Проверка по бизнес-правилам');
 
         run_one_query_set(p_objecttype, 4);
+        
+        
+        -- переносим ошибки в таблицу логов dtxloadlog_dbt
+        write_errors_into_log;        
+
+        
+        -- исключаем строки из обработки на основании таблицы ошибок. 
+        WRITE_LOG_START;
+        case p_objecttype
+        when 80 then
+            execute immediate
+            'update dtxdeal_tmp set t_replstate=2 where t_dealid in (select t_objectid from dtx_error_dbt where t_severity=1 and t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
+        when 90 then
+        execute immediate
+            'update dtxdemand_tmp set t_replstate=2 where t_demandid in (select t_objectid from dtx_error_dbt where t_severity=1 and t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
+            null;
+        when 70 then
+        execute immediate
+            'update dtxcourse_tmp set t_replstate=2 where t_courseid in (select t_objectid from dtx_error_dbt where t_severity=1 and t_objecttype=:1 and t_sessid=:2 and t_detailid=:3)' using p_objecttype, g_SESSION_ID, g_SESS_DETAIL_ID;
+            null;            
+        end case;
+        WRITE_LOG_FINISH( 'Отмечаем в снимке найденные ошибки', p_objecttype, 0, 0);
+        
+        
         
         l_dur_interval := current_timestamp - l_perf_start;
         l_dur_min := extract(minute from l_dur_interval);
@@ -1216,6 +1224,7 @@ is
     procedure load_deals_by_period(p_startdate date, p_enddate date default null)
     is
         l_enddate date;
+        l_count number := 0;
     begin
         deb('Запущена процедура LOAD_DEALS_BY_PERIOD');
         
@@ -1230,15 +1239,35 @@ is
         insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
         values (g_SESSION_ID, 'LOAD_DEALS', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
         commit;
+        --==================================================================================================
     
         -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
         deals_create_snapshot(p_startdate, l_enddate);
         
+        
+        -- выполняет общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+        WRITE_LOG_START;
+        -- исключает дубли записей внутри одного дня
+        update dtxdeal_tmp set t_replstate=2 where rowid in 
+        (select lag(rowid) over(partition by t_dealid, t_instancedate order by null) from dtxdeal_tmp);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает лишние операции обновления, оставляя толко последнюю из них по каждой dealid 
+        update dtxdeal_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_dealid order by t_instancedate desc) from dtxdeal_tmp where t_action = 2);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает вставки-изменения записи, если последней идет операция удаления по этому dealid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+        update dtxdeal_tmp s set t_replstate=2
+        where exists (select 1 from dtxdeal_tmp  where t_dealid=s.t_dealid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+        l_count := l_count + sql%rowcount; 
+        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
+        commit;
+        
+        
+        
         -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
         run_all_queries( 80 );
         
-        -- переносит ошбки в таблицу логов dtxloadlog_dbt
-        write_errors_into_log;
         
         -- формирует записи в таблицы целевой системы (DDL_TICK_DBT, DDL_LEG_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
         deals_create_records;
@@ -1251,6 +1280,7 @@ is
     procedure load_demands_by_period(p_startdate date, p_enddate date default null)
     is
         l_enddate date;
+        l_count number := 0;
     begin
         deb('Запущена процедура LOAD_DEMANDS_BY_PERIOD');
                 
@@ -1265,9 +1295,32 @@ is
         insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
         values (g_SESSION_ID, 'LOAD_DEMANDS', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
         commit;
+        --===========================================================================
     
         -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
         demands_create_snapshot(p_startdate, l_enddate);
+        
+        
+        
+        -- выполняем общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+        WRITE_LOG_START;
+        -- исключает дубли записей внутри одного дня
+        update dtxdemand_tmp set t_replstate=2 where rowid in 
+        (select lag(rowid) over(partition by t_demandid, t_instancedate order by null) from dtxdemand_tmp);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_demandid 
+        update dtxdemand_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_demandid order by t_instancedate desc) from dtxdemand_tmp where t_action = 2);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_demandid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+        update dtxdemand_tmp s set t_replstate=2
+        where exists (select 1 from dtxdemand_tmp  where t_demandid=s.t_demandid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+        l_count := l_count + sql%rowcount; 
+        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
+        commit;
+        
+        
         
         -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
         run_all_queries( 90 );
@@ -1288,6 +1341,7 @@ is
     procedure load_courses_by_period(p_startdate date, p_enddate date default null)
     is
         l_enddate date;
+        l_count number := 0;
     begin
         deb('Запущена процедура LOAD_COURSES_BY_PERIOD');
                 
@@ -1302,9 +1356,32 @@ is
         insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
         values (g_SESSION_ID, 'LOAD_COURSES', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
         commit;
+        --============================================================================
     
         -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
         courses_create_snapshot(p_startdate, l_enddate);
+        
+        
+        
+        -- выполняем общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+        WRITE_LOG_START;
+        -- исключает дубли записей внутри одного дня
+        update dtxcourse_tmp set t_replstate=2 where rowid in 
+        (select lag(rowid) over(partition by t_courseid, t_instancedate order by null) from dtxcourse_tmp);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_courseid 
+        update dtxcourse_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_courseid order by t_instancedate desc) from dtxcourse_tmp where t_action = 2);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_courseid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+        update dtxcourse_tmp s set t_replstate=2
+        where exists (select 1 from dtxcourse_tmp  where t_courseid=s.t_courseid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+        l_count := l_count + sql%rowcount; 
+        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
+        commit;
+        
+        
         
         -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
         run_all_queries( 70 );
@@ -1324,6 +1401,7 @@ is
     procedure load_comiss_by_period(p_startdate date, p_enddate date default null)
     is
         l_enddate date;
+        l_count number := 0;
     begin
         deb('Запущена процедура LOAD_COMISS_BY_PERIOD');
                 
@@ -1338,9 +1416,31 @@ is
         insert into dtx_sess_detail_dbt( T_SESSID, T_PROCEDURE, T_INSTANCEDATE, T_STARTDATE)
         values (g_SESSION_ID, 'LOAD_COURSES', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
         commit;
+        --=================================================================================
     
         -- заполняет таблицу снимка (dtxcomiss_tmp из dtxcomiss_dbt)
         comiss_create_snapshot(p_startdate, l_enddate);
+        
+        
+        -- выполняет общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+        WRITE_LOG_START;
+        -- исключает дубли записей внутри одного дня
+        update dtxcomiss_tmp set t_replstate=2 where rowid in 
+        (select lag(rowid) over(partition by t_comissid, t_instancedate order by null) from dtxcomiss_tmp);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_comissid 
+        update dtxcomiss_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_comissid order by t_instancedate desc) from dtxcomiss_tmp where t_action = 2);
+        l_count := l_count + sql%rowcount;
+        
+        -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_comissid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+        update dtxcomiss_tmp s set t_replstate=2
+        where exists (select 1 from dtxcomiss_tmp  where t_comissid=s.t_comissid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+        l_count := l_count + sql%rowcount; 
+        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
+        commit;
+        
+                
         
         -- прогоняет сеты запросов по таблице снимка dtxcomiss_tmp
         run_all_queries( 100 );
@@ -1463,7 +1563,6 @@ is
         is
                 v_rez number;
         begin
-            deb('Запущена функция RTYPE');
             case
                 when p_tp = 26 then v_rez := 23;
                 when p_tp = 10 then v_rez := 23;
@@ -1514,6 +1613,11 @@ begin
     deb('=== Выполняется инициирующая загрузка в пакете ===');
     DBMS_OUTPUT.ENABLE (buffer_size => NULL);
 
+    -- обход ошибки ora-00979: not a group by.. при использовании INSERT-SELECT-GROUP BY
+    -- на новой базе попробовать отключить, если ошбка не появится, оставить
+    -- https://support.oracle.com/knowledge/Oracle%20Database%20Products/2804026_1.html 
+    execute immediate 'ALTER SESSION SET "_complex_view_merging" = FALSE';
+
     rollback; -- посреди транзакции нельзя выполнить следующую команду
     execute immediate 'alter session enable parallel dml';
     
@@ -1534,8 +1638,6 @@ begin
     then
         g_fictfi := c_DEFAULT_FICTFI;
     end;
-    g_debug_level_current := g_debug_level_limit;
-
     
     deb('=== Завершен исполняемый блок пакета ===');
 end load_rss;

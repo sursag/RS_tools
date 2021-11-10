@@ -51,6 +51,7 @@ CREATE UNIQUE INDEX DTX_QUERY_DBT_ID1 ON DTX_QUERY_DBT (T_OBJECTTYPE,T_SET, T_NU
 -- таблица инстансов ошибок
 CREATE TABLE DTX_ERROR_DBT
 (
+  T_ID          NUMBER GENERATED ALWAYS AS IDENTITY NOT NULL,
   T_SESSID      NUMBER(10),
   T_DETAILID    NUMBER(10),
   T_OBJECTTYPE  NUMBER(5),
@@ -59,10 +60,14 @@ CREATE TABLE DTX_ERROR_DBT
   T_ERRORCODE   NUMBER(4),
   T_TIMESTAMP   DATE,
   IS_LOGGED     CHAR(1 CHAR),
-  T_ID          NUMBER GENERATED ALWAYS AS IDENTITY NOT NULL
-);
+  T_SEVERITY    NUMBER(1)
+)
+LOGGING 
+MONITORING;
+
 
 create table dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));
+
 
 CREATE TABLE DTX_QUERYLOG_DBT
 (
@@ -91,7 +96,7 @@ select a.*, sum(t_duration) over() total from DTX_QUERYLOG_DBT a where t_sessdet
 order by t_id;
 
 create or replace view v_err as
-select T_TIMESTAMP, T_OBJECTTYPE, T_OBJECTID, T_QUERYID, IS_LOGGED, T_ERRORCODE, T_DESC 
+select T_TIMESTAMP, T_SEVERITY, T_OBJECTTYPE, T_OBJECTID, T_QUERYID, IS_LOGGED, T_ERRORCODE, T_DESC 
 from dtx_error_dbt left join dtx_errorkinds_dbt on (T_ERRORCODE=t_code)
 where t_detailid=(select max(t_detailid) from dtx_error_dbt) order by t_id;
 
@@ -100,12 +105,8 @@ where t_detailid=(select max(t_detailid) from dtx_error_dbt) order by t_id;
 
 --SQL Statement which produced this data:
 --
---  select rowid, a.* from dtx_errorkinds_dbt a  order by 2;
+--  select rowid, a.* from dtx_errorkinds_dbt a;
 --
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (206, 'Ошибка: объект находится в режиме ручного редактирования');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
@@ -117,7 +118,7 @@ Insert into DTX_ERRORKINDS_DBT
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (302, 'Ошибка: торговая площадка не найдена в replobj_dbt');
+   (310, 'Ошибка: для курса не задан котируемый финансовый инструмент');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
@@ -125,11 +126,11 @@ Insert into DTX_ERRORKINDS_DBT
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (306, 'Ошибка: базовый финансовый инструмент не найден в replobj_dbt');
+   (302, 'Ошибка: торговая площадка не найдена в replobj_dbt');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (310, 'Ошибка: для курса не задан котируемый финансовый инструмент');
+   (306, 'Ошибка: базовый финансовый инструмент не найден в replobj_dbt');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
@@ -165,27 +166,71 @@ Insert into DTX_ERRORKINDS_DBT
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (421, 'Ошибка: сделка уже существует в целевой системе');
+   (303, 'Ошибка: для курса не задан тип');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (422, 'Ошибка: сделка не найдена в целевой системе');
+   (304, 'Ошибка: для курса не задано значение');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (423, 'Ошибка: сделка уже удалена в целевой системе');
+   (340, 'Ошибка: Не существует значения такого курса за дату');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (500, 'Предупреждение: стоимость (T_COST) не равна произведению цены (T_PRICE) в валюте на количество бумаг (T_AMOUNT)');
+   (341, 'Ошибка: уже существует значение курса за такую дату');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (501, 'Предупреждение: стоимость (T_COST) не равна произведению цены (T_PRICE) на количество бумаг (T_AMOUNT)');
+   (551, 'Ошибка: для операции погашения не найдено загруженное ЧП (T_PARTIALID)');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (502, 'Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) на количество бумаг (T_AMOUNT)');
+   (206, 'Ошибка: объект находится в режиме ручного редактирования');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (539, 'Ошибка: не задан параметр T_CODE - код сделки');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (568, 'Ошибка: не задан параметр T_KIND - вид сделки');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (553, 'Ошибка: не задан параметр T_AMOUNT - количество ценных бумаг');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (556, 'Ошибка: не задан параметр T_PRICE - цена за шт. ценной бумаги, не включая НКД');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (557, 'Ошибка: не задан параметр T_COST - стоимость ценных бумаг без НКД');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (558, 'Ошибка: не задан параметр T_TOTALCOST - общая сумма сделки вкл. НКД в валюте сделки');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (564, 'Ошибка: не задан параметр T_COST2 - стоимость ценных бумаг без НКД по 2-ой части РЕПО');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (563, 'Ошибка: не задан параметр T_PRICE2 - цена за шт. ценной бумаги, не включая НКД по 2-ой части РЕПО');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (565, 'Ошибка: не задан параметр T_TOTALCOST2 - общая сумма сделки вкл. НКД в валюте сделки ао 2-ой части РЕПО');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (566, 'Ошибка: не задан параметр T_SUPLDATE2 - плановая дата поставки в сделках');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (567, 'Ошибка: не задан параметр T_PAYDATE2 - плановая дата оплаты в сделках');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
@@ -193,15 +238,43 @@ Insert into DTX_ERRORKINDS_DBT
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (527, 'Предупреждение: техническая сделка в систему не реплицируется');
+   (596, 'Ошибка: не найдена сделка РЕПО на корзину (T_PARENTID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (548, 'Ошибка: для операции погашения не задан купон (T_WARRANTID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (997, 'Ошибка: для операции погашения не найдено ЧП (T_PARTIALID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (549, 'Ошибка: для операции погашения не найден загруженный купон (T_WARRANTID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (550, 'Ошибка: для операции погашения не задано ЧП (T_PARTIALID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (552, 'Ошибка: не найдена ценная бумага (T_AVOIRISSID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (554, 'Ошибка: не найдена валюта сделки (T_CURRENCYID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (555, 'Ошибка: не найдена валюта НКД (T_NKDFIID)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (547, 'Ошибка: для внебиржевой сделки не найден контрагент, параметр T_PARTYID');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
    (534, 'Ошибка: не найден субъект T_MARKETID');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (539, 'Ошибка: не задан параметр T_CODE - код сделки');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
@@ -221,54 +294,6 @@ Insert into DTX_ERRORKINDS_DBT
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (547, 'Ошибка: для внебиржевой сделки не найден контрагент, параметр T_PARTYID');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (548, 'Ошибка: для операции погашения не задан купон (T_WARRANTID)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (549, 'Ошибка: для операции погашения не найден загруженный купон (T_WARRANTID)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (550, 'Ошибка: для операции погашения не задано ЧП (T_PARTIALID)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (551, 'Ошибка: для операции погашения не найдено загруженное ЧП (T_PARTIALID)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (552, 'Ошибка: не найдена ценная бумага (T_AVOIRISSID)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (553, 'Ошибка: не задан параметр T_AMOUNT - количество ценных бумаг');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (554, 'Ошибка: не найдена валюта сделки (T_CURRENCYID)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (555, 'Ошибка: не найдена валюта НКД (T_NKDFIID)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (556, 'Ошибка: не задан параметр T_PRICE - цена за шт. ценной бумаги, не включая НКД');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (557, 'Ошибка: не задан параметр T_COST - стоимость ценных бумаг без НКД');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (558, 'Ошибка: не задан параметр T_TOTALCOST - общая сумма сделки вкл. НКД в валюте сделки');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
    (559, 'Ошибка: не задан параметр T_SUPLDATE - плановая дата передачи/возврата в займе');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
@@ -285,31 +310,39 @@ Insert into DTX_ERRORKINDS_DBT
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (563, 'Ошибка: не задан параметр T_PRICE2 - цена за шт. ценной бумаги, не включая НКД по 2-ой части РЕПО');
+   (527, 'Предупреждение: техническая сделка в систему не реплицируется');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (564, 'Ошибка: не задан параметр T_COST2 - стоимость ценных бумаг без НКД по 2-ой части РЕПО');
+   (422, 'Ошибка: сделка не найдена в целевой системе');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (565, 'Ошибка: не задан параметр T_TOTALCOST2 - общая сумма сделки вкл. НКД в валюте сделки ао 2-ой части РЕПО');
+   (421, 'Ошибка: сделка уже существует в целевой системе');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (566, 'Ошибка: не задан параметр T_SUPLDATE2 - плановая дата поставки в сделках');
+   (650, 'Ошибка: не найдена запись с условиями сделки (ddl_leg_dbt)');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (567, 'Ошибка: не задан параметр T_PAYDATE2 - плановая дата оплаты в сделках');
+   (651, 'Ошибка: не найдена запись с условиями второй части сделки (ddl_leg_dbt)');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (568, 'Ошибка: не задан параметр T_KIND - вид сделки');
+   (423, 'Ошибка: сделка уже удалена в целевой системе');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (596, 'Ошибка: не найдена сделка РЕПО на корзину (T_PARENTID)');
+   (500, 'Предупреждение: стоимость (T_COST) не равна произведению цены (T_PRICE) в валюте на количество бумаг (T_AMOUNT)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (501, 'Предупреждение: стоимость (T_COST) не равна произведению цены (T_PRICE) на количество бумаг (T_AMOUNT)');
+Insert into DTX_ERRORKINDS_DBT
+   (T_CODE, T_DESC)
+ Values
+   (502, 'Предупреждение: стоимость по второй части сделки (T_COST2) не равна произведению цены (T_PRICE2) на количество бумаг (T_AMOUNT)');
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
@@ -357,13 +390,5 @@ Insert into DTX_ERRORKINDS_DBT
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values
-   (650, 'Ошибка: не найдена запись с условиями сделки (ddl_leg_dbt)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (651, 'Ошибка: не найдена запись с условиями второй части сделки (ddl_leg_dbt)');
-Insert into DTX_ERRORKINDS_DBT
-   (T_CODE, T_DESC)
- Values
-   (997, 'Ошибка: для операции погашения не найдено ЧП (T_PARTIALID)');
+   (900, 'Предупреждение: объекты дублировались в пределах t_instancedate');
 COMMIT;

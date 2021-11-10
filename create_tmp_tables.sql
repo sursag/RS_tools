@@ -164,7 +164,6 @@ COMMENT ON COLUMN DTXDEAL_TMP.TGT_ISFICTIVE IS 'Фиктивная операция - отражает дв
 
 
 
-
 CREATE TABLE DTXCOURSE_TMP
 (
   T_COURSEID          NUMBER(15)                NOT NULL,
@@ -191,7 +190,6 @@ CREATE TABLE DTXCOURSE_TMP
   TGT_ISNOMINAL       CHAR(1 CHAR),
   TGT_ISDOMINANT      CHAR(1 CHAR),
   TGT_ISRELATIVE      CHAR(1 CHAR),
-  TGT_ISBOND          CHAR(1 CHAR),
   TGT_FACEVALUE_FIID  NUMBER(15),
   TGT_BASEFIKIND      NUMBER,
   TGT_LAST_DATE_RSS   DATE,
@@ -220,8 +218,6 @@ COMMENT ON COLUMN DTXCOURSE_TMP.TGT_ISNOMINAL IS 'Является номиналом для бумаги 
 
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_ISRELATIVE IS 'Курс задан в процентах от номинала';
 
-COMMENT ON COLUMN DTXCOURSE_TMP.TGT_ISBOND IS 'Базовый фининструмент - облигация';
-
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_FACEVALUE_FIID IS 'Валюта номинала, если это курс для бумаги (T_BASEFIKIND=20)';
 
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_BASEFIKIND IS 'Вид базового иинсструмента, если это бумага';
@@ -233,6 +229,7 @@ COMMENT ON COLUMN DTXCOURSE_TMP.TGT_LAST_DATE_DTX IS 'Максимальная дата по курсу
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_NEWRATEID IS 'Поле для сгенерированного ID для DRATEDEF_DBT, если такого курса еще не было вообще';
 
 COMMENT ON COLUMN DTXCOURSE_TMP.TGT_RATE IS 'Значение T_RATE, отмасштабированное по t_point';
+                                                                                             
 
 
 
@@ -277,6 +274,31 @@ CREATE TABLE DTXDEMAND_TMP
   TGT_TYPE         NUMBER(2),
   TGT_SUBKIND      NUMBER(1),
   TGT_STATE        NUMBER(1)
+)
+LOGGING 
+MONITORING;
+
+
+
+
+
+CREATE TABLE DTXCOMISS_TMP
+(
+  T_COMISSID      NUMBER(15)                    NOT NULL,
+  T_INSTANCEDATE  DATE                          NOT NULL,
+  T_ACTION        NUMBER(5),
+  T_REPLSTATE     NUMBER(5),
+  T_DEALID        NUMBER(15)                    NOT NULL,
+  T_TYPE          NUMBER(5),
+  T_SUM           NUMBER(32,12),
+  T_NDS           NUMBER(32,12),
+  T_CURRENCYID    NUMBER(15),
+  T_DATE          DATE,
+  TGT_COMISSID    NUMBER(15),
+  TGT_COMMNUMBER  NUMBER(5),
+  TGT_DEALID      NUMBER(15),
+  TGT_NDS         NUMBER,
+  TGT_CONTRACTOR  NUMBER(15)
 )
 LOGGING 
 MONITORING;
