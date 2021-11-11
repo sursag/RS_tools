@@ -6,6 +6,7 @@ is
     g_oper constant number := 1;            -- операционист, который будет прописываться во все таблицы
     g_ourbank constant number := 12;        -- Код нашего банка. Проверить
     g_department  constant number := 1;     -- Департамент по умолчанию. См. ddp_dep_dbt
+    g_is_initialized  boolean := false;
     
     g_use_needdemand constant boolean := true;  -- Использовать NEEDDEMAND в сделках. Поскольку многие банки не используют его в принципе, нет смысла прогонять каждый раз запросы
     
@@ -46,11 +47,10 @@ is
 
                                       
     -- Функции для вызова из SQL
-    function GetDealKind( p_kind number, p_avoirissid number, p_market number, p_isbasket char, p_isksu char)    return number DETERMINISTIC;
-    function GetIsQuoted(p_fi number, p_date date) return char DETERMINISTIC;
-    function GetIsKSU(p_fi number) return char DETERMINISTIC;
-    function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC;
-    function GetRateType( p_tp number ) return number DETERMINISTIC;    
+    function GetDealKind( p_kind number, p_avoirissid number, p_market number, p_isbasket char, p_isksu char)    return number PARALLEL_ENABLE ;
+    function GetIsQuoted(p_fi number, p_date date) return char DETERMINISTIC PARALLEL_ENABLE;
+    function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC PARALLEL_ENABLE;
+    function GetRateType( p_tp number ) return number DETERMINISTIC PARALLEL_ENABLE;    
     
     -- стартовые функции
     procedure load_deals_by_period(p_startdate date, p_enddate date default null);

@@ -86,7 +86,11 @@ CREATE TABLE DTX_QUERYLOG_DBT
 );
 
 
-
+alter sequence ddl_tick_dbt_seq cache 200;
+alter sequence ddl_leg_dbt_seq cache 200;
+alter sequence ddlrq_dbt_seq cache 200;
+alter sequence dnotetext_dbt_seq cache 200;
+alter sequence dobjatcor_dbt_seq cache 200;
 
 
 
