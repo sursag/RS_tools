@@ -53,9 +53,14 @@ is
     function GetRateType( p_tp number ) return number DETERMINISTIC PARALLEL_ENABLE;    
     
     -- стартовые функции
-    procedure load_deals_by_period(p_startdate date, p_enddate date default null);
-    procedure load_demands_by_period(p_startdate date, p_enddate date default null);
-    procedure load_courses_by_period(p_startdate date, p_enddate date default null);
+    -- p_startdate определ€ет начальную дату репликации
+    -- p_enddate определ€ет конечную дату репликации. «аписи будут реплицированы по эу дату включительнно. ≈сли не задано, она принимаетс€ равной (p_startdate + 1 день - 1 секунда)
+    -- p_stage признак раздельного запуска, дл€ отладки. ≈сли = 1, будет выполнено только заполнение таблицы TMP. ≈сли = 2, то только перенос данных в целевые таблицы
+    -- ≈сли null - будут выполнены оба шага. Ћюбое другое значение - ошибка.
+    procedure load_deals_by_period(p_startdate date, p_enddate date default null, p_stage number default null);
+    procedure load_demands_by_period(p_startdate date, p_enddate date default null, p_stage number default null);
+    procedure load_courses_by_period(p_startdate date, p_enddate date default null, p_stage number default null);
+    procedure load_comiss_by_period(p_startdate date, p_enddate date default null, p_stage number default null);
 
 
     g_my_SID  number; -- дл€ сбора статистики по пореблению пам€ти и т.д.

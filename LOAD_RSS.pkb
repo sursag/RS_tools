@@ -136,13 +136,17 @@ is
             l_count := 0;
             deb('Запись платежей по needdemand');
             WRITE_LOG_START;
-            delete from ddlrq_dbt where t_docid in  
+            -- триггеры придется пока отключить, они мешают вставке в режиме direct path
+            execute immediate 'alter table ddlrq_dbt disable all triggers';
+            
+            delete /*+ parallel(4) */ from ddlrq_dbt where t_docid in  
             (select tgt_dealid from dtxdeal_tmp where t_replstate=0 and t_needdemand='X');
             WRITE_LOG_FINISH('Удаление старых платежей', 80);        
+            commit;
             
             -- платеж по первой части по бумагам, плановый
-            insert /*+ parallel(4) */ into ddlrq_dbt(T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL)
-            select TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
+            insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
             case when t_kind in (10,30,60) then 0 /*требование*/ else 1/*обязательство*/ end /*T_KIND*/, 
             1 /*T_SUBKIND, бумаги*/, 8 /*TGT_TYPE, поставка бумаг*/, 0 /*T_NUM*/,
             T_AMOUNT /*T_AMOUNT*/, TGT_AVOIRISSID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
@@ -150,28 +154,28 @@ is
             case when tgt_maturityisprincipal=chr(88) then tgt_maturity else tgt_expiry end /*T_PLANDATE*/, 
             date'0001-01-01', CHR(0), CHR(0)/*T_NETTING*/, null, 0, 
             case when tgt_maturityisprincipal=chr(88) then tgt_maturity else tgt_expiry end /*TGT_CHANGEDATE*/,
-            0 /*T_ACTION*/, 0, 81, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
+            0 /*T_ACTION*/, 0, 81, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
             from dtxdeal_tmp where t_replstate=0 and t_needdemand='X' and t_kind not in (80,90,110) and t_action in (1,2);
             l_count := l_count + sql%rowcount;
             commit;
             
             -- платеж по первой части по бумагам, фактический
-            insert /*+ parallel(4) */ into ddlrq_dbt(T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL)
-            select TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
+            insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
             case when t_kind in (10,30,60) then 0 /*требование*/ else 1/*обязательство*/ end /*T_KIND*/, 
-            1 /*T_SUBKIND, бумаги*/, 8 /*TGT_TYPE, поставка бумаг*/, 0 /*T_NUM*/,
+            1 /*T_SUBKIND, бумаги*/, 8 /*TGT_TYPE, поставка бумаг*/, 2 /*T_NUM*/,
             T_AMOUNT /*T_AMOUNT*/, TGT_AVOIRISSID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
             2 /*tgt_state*/,  date'0001-01-01',
             case when tgt_maturityisprincipal=chr(88) then tgt_maturity else tgt_expiry end /*T_PLANDATE*/, 
              CHR(0), CHR(0)/*T_NETTING*/, null, 0, date'0001-01-01' /*TGT_CHANGEDATE*/,
-            0 /*T_ACTION*/, 0, 82, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
+            0 /*T_ACTION*/, 0, 82, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
             from dtxdeal_tmp where t_replstate=0 and t_needdemand='X' and t_kind not in (80,90,110) and t_action in (1,2);
             l_count := l_count + sql%rowcount;
             commit;
             
             -- платеж по первой части по деньгам, плановый
-            insert /*+ parallel(4) */ into ddlrq_dbt(T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL)
-            select TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
+            insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
             case when t_kind in (10,30,60) then 1/*обязательство*/ else 0 /*требование*/ end /*T_KIND*/, 
             0 /*T_SUBKIND, деньги*/, 2 /*TGT_TYPE, оплата*/, 0 /*T_NUM*/,
             T_TOTALCOST /*T_AMOUNT*/, TGT_CURRENCYID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
@@ -179,33 +183,34 @@ is
             case when tgt_maturityisprincipal=chr(88) then tgt_expiry else tgt_maturity end /*T_PLANDATE*/, 
             date'0001-01-01', CHR(0), CHR(0)/*T_NETTING*/, null, 0, 
             case when tgt_maturityisprincipal=chr(88) then tgt_expiry else tgt_maturity end /*TGT_CHANGEDATE*/,
-            0 /*T_ACTION*/, 0, 83, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
+            0 /*T_ACTION*/, 0, 83, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
             from dtxdeal_tmp where t_replstate=0 and t_needdemand='X' and t_action in (1,2);            
             l_count := l_count + sql%rowcount;
             commit;
 
             -- платеж по первой части по деньгам, фактический
-            insert /*+parallel(4) */ into ddlrq_dbt(T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL)
-            select TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
+            insert /*+parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
             case when t_kind in (10,30,60) then 1/*обязательство*/ else 0 /*требование*/ end /*T_KIND*/, 
-            0 /*T_SUBKIND, деньги*/, 2 /*TGT_TYPE, оплата*/, 0 /*T_NUM*/,
+            0 /*T_SUBKIND, деньги*/, 2 /*TGT_TYPE, оплата*/, 2 /*T_NUM*/,
             T_TOTALCOST /*T_AMOUNT*/, TGT_CURRENCYID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
             2 /*tgt_state*/, date'0001-01-01' /*T_PLANDATE*/, 
             case when tgt_maturityisprincipal=chr(88) then tgt_expiry else tgt_maturity end /*T_FACTDATE*/, 
             CHR(0), CHR(0)/*T_NETTING*/, null, 0, date'0001-01-01' /*TGT_CHANGEDATE*/,
-            0 /*T_ACTION*/, 0, 84, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
+            0 /*T_ACTION*/, 0, 84, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
             from dtxdeal_tmp where t_replstate=0 and t_needdemand='X' and t_action in (1,2);        
             l_count := l_count + sql%rowcount;
             commit;    
             
             WRITE_LOG_FINISH('Заполнение DDLRQ_DBT (t_action 1,2)', 80, p_count=>l_count);
             
-            insert /*+append */into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
+            insert /*+parallel(4)*/into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
             select 90, tgt_dealid, p.t_id_step, p.t_id, 1, 0
             from dtxdeal_tmp d join ddlrq_dbt p on (d.tgt_dealid=p.t_docid)
             where d.t_replstate=0 and p.t_action in (1,2) and d.t_needdemand='X';
-            
+            commit;
             WRITE_LOG_FINISH('Заполнение DTXREPLOBJ по автоплатежам (t_action 1,2)', 80, p_count=>l_count);
+            execute immediate 'alter table ddlrq_dbt enable all triggers';
         end;
 
 
@@ -537,7 +542,9 @@ is
                 when others then
                     rollback;
                     deb('Ошибка в запросе номер #1 в сете #2, id запроса #3', q_rec.T_NUM, q_rec.T_SET, q_rec.T_SCREENID);
-                    WRITE_LOG_FINISH( 'Ошибка: '  || q_rec.T_NAME, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
+                    WRITE_LOG_FINISH( '! Ошибка: '  || q_rec.T_NAME, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
+                    -- при выводе ошибочного запроса его параметры заменяются на нужные константы, чтобы можно было выполнить запрос в sql
+                    WRITE_LOG_FINISH( replace(replace(replace(replace(q_rec.t_text,':1',g_SESSION_ID),':2', g_SESS_DETAIL_ID),':2', q_rec.t_screenid),':2', q_rec.t_severity), q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
                     raise;
                 end; 
         end loop;
@@ -652,38 +659,38 @@ is
                 T_TAXOWNBEGDATE, T_DISCONT, T_FACTRECEIVERID, T_ISCONFIRMED, T_ISREADY, T_SUMPAY, T_NEGATIVERATE, T_ASSIGNMENT, T_WITHPERCENT, T_LIMITCUR, T_DEBTLIMIT, T_ISSUANCELIMIT, T_TAX_AMOUNT, T_CREDIT_TAX_AMOUNT, T_CREDIT_TAX_CUR, T_CREDIT_TAX_TERM, T_PLACEMENT, T_OFFER, T_FLAGTYPEDEAL, T_CASHDECISION, 
                 T_ISPFI, T_ADJDATETYPE, T_SUBORDINATEDDATE, T_CAPITALNOTINCLUDED, T_ISSPOT, T_CALCPFI, T_PAYMAGENT, T_AUTOPLACEMENT)
         select
-                TGT_DEALID /*T_DEALID*/, TGT_BOFFICEKIND /*T_BOFFICEKIND*/, TGT_DEALKIND /*T_DEALTYPE*/, NULL /*T_DEALGROUP*/, NULL /*T_TRADESYSTEM*/, 
-                T_CODE /*T_DEALCODE*/, T_EXTCODE /*T_DEALCODETS*/, t_tskind /*T_TYPEDOC*/, NULL /*T_USERTYPEDOC*/, TGT_PARTYID /*T_PARTYID*/, 
-                TGT_BROKERID /*T_BROKERID*/, -1 /*T_CLIENTID*/, -1 /*T_TRADERID*/, -1 /*T_DEPOSITID*/, TGT_MARKETID /*T_MARKETID*/, 
-                NULL /*T_INDOCID*/, T_DATE /*T_DEALDATE*/, T_DATE /*T_REGDATE*/, 2 /*T_DEALSTATUS*/, NULL /*T_NUMBERPACK*/, 
-                tgt_department /*T_DEPARTMENT*/, g_oper /*T_OPER*/, NULL /*T_ORIGINID*/, NULL /*T_EXTERNID*/, case when tgt_marketid>0 then 'X' else chr(0) end /*T_FLAG1*/, 
-                NULL /*T_FLAG2*/, NULL /*T_FLAG3*/, NULL /*T_FLAG4*/, case when T_COSTCHANGE=chr(88) then chr(88) else chr(0) end/*T_FLAG5*/, NULL /*T_USERFIELD1*/, 
-                NULL /*T_USERFIELD2*/, NULL /*T_USERFIELD3*/, NULL /*T_USERFIELD4*/, NULL /*T_COMMENT*/, t_closedate /*T_CLOSEDATE*/, 
-                NULL /*T_SHIELD*/, NULL /*T_SHIELDSIZE*/, NULL /*T_ISPERCENT*/, 1 /*T_SCALE*/, 4 /*T_POINTS*/, 
-                NULL /*T_REVRATE*/, NULL /*T_COLLATERAL*/, T_TIME /*T_DEALTIME*/, TGT_PORTFOLIOID /*T_PORTFOLIOID*/, NULL /*T_BUNDLE*/, 
-                NULL /*T_CBRISKGROUP*/, NULL /*T_RISKGROUP*/, NULL /*T_ATTRIBUTES*/, NULL /*T_PRODUCT*/, NULL /*T_NETTING*/, 
-                NULL /*T_DEALCODEPS*/, NULL /*T_CONFTPID*/, NULL /*T_LINKCHANNEL*/, TGT_WARRANT_NUM /*T_NUMBER_COUPON*/, tgt_sector /*T_MARKETOFFICEID*/, 
-                NULL /*T_CLIENTCONTRID*/, NULL /*T_BROKERCONTRID*/, NULL /*T_INDOCCODE*/, NULL /*T_PREOUTLAY*/, NULL /*T_PREOUTLAYFIID*/, 
-                NULL /*T_GROUNDID*/, 0 /*T_BUYGOAL*/, NULL /*T_COMMDATE*/, NULL /*T_PAYMENTSMETHOD*/, NULL /*T_FIXSUM*/, 
-                NULL /*T_NUMBER_PARTLY*/, NULL /*T_CHANGEDATE*/, NULL /*T_INSTANCE*/, NULL /*T_CHANGEKIND*/, TGT_PORTFOLIOID_2 /*T_PORTFOLIOID_2*/, 
-                NULL /*T_ISPARTYCLIENT*/, NULL /*T_PARTYCONTRID*/, NULL /*T_BRANCH*/, TGT_AVOIRKIND /*T_AVOIRKIND*/, NULL /*T_OFBU*/, 
-                NULL /*T_MARKETSCHEMEID*/, NULL /*T_DEPSETID*/, case when t_costchange=chr(88) then 2 end /*T_RETURNINCOMEKIND*/, NULL /*T_REQUESTID*/, NULL /*T_BLOCKED*/, 
-                tgt_country /*T_COUNTRY*/, tgt_avoirissid /*T_PFI*/, NULL /*T_ISINSTANCY*/, NULL /*T_GENAGRID*/, NULL /*T_PARENTID*/, 
+                TGT_DEALID /*T_DEALID*/, TGT_BOFFICEKIND /*T_BOFFICEKIND*/, TGT_DEALKIND /*T_DEALTYPE*/, 0 /*T_DEALGROUP*/, 0 /*T_TRADESYSTEM*/, 
+                T_CODE /*T_DEALCODE*/, T_EXTCODE /*T_DEALCODETS*/, t_tskind /*T_TYPEDOC*/, chr(1) /*T_USERTYPEDOC*/, nvl(TGT_PARTYID,-1) /*T_PARTYID*/, 
+                nvl(TGT_BROKERID,-1) /*T_BROKERID*/, -1 /*T_CLIENTID*/, -1 /*T_TRADERID*/, -1 /*T_DEPOSITID*/, nvl(TGT_MARKETID,-1) /*T_MARKETID*/, 
+                0 /*T_INDOCID*/, T_DATE /*T_DEALDATE*/, T_DATE /*T_REGDATE*/, 10 /*T_DEALSTATUS*/, 0 /*T_NUMBERPACK*/, 
+                tgt_department /*T_DEPARTMENT*/, g_oper /*T_OPER*/, 0 /*T_ORIGINID*/, chr(1) /*T_EXTERNID*/, case when tgt_marketid>0 then 'X' else chr(0) end /*T_FLAG1*/, 
+                NULL /*T_FLAG2*/, NULL /*T_FLAG3*/, NULL /*T_FLAG4*/, case when T_COSTCHANGE=chr(88) then chr(88) else chr(0) end/*T_FLAG5*/, chr(1) /*T_USERFIELD1*/, 
+                chr(1) /*T_USERFIELD2*/, chr(1) /*T_USERFIELD3*/, chr(1) /*T_USERFIELD4*/, chr(1) /*T_COMMENT*/, t_closedate /*T_CLOSEDATE*/, 
+                chr(1) /*T_SHIELD*/, 0 /*T_SHIELDSIZE*/, NULL /*T_ISPERCENT*/, 0 /*T_SCALE*/, 4 /*T_POINTS*/, 
+                NULL /*T_REVRATE*/, 0 /*T_COLLATERAL*/, T_TIME /*T_DEALTIME*/, TGT_PORTFOLIOID /*T_PORTFOLIOID*/, 0 /*T_BUNDLE*/, 
+                0 /*T_CBRISKGROUP*/, 0 /*T_RISKGROUP*/, 0 /*T_ATTRIBUTES*/, 0 /*T_PRODUCT*/, 0 /*T_NETTING*/, 
+                chr(1) /*T_DEALCODEPS*/, 0 /*T_CONFTPID*/, 0 /*T_LINKCHANNEL*/, nvl(to_char(TGT_WARRANT_NUM),chr(1)) /*T_NUMBER_COUPON*/, nvl(tgt_sector,0) /*T_MARKETOFFICEID*/, 
+                0 /*T_CLIENTCONTRID*/, 0 /*T_BROKERCONTRID*/, chr(1) /*T_INDOCCODE*/, 0 /*T_PREOUTLAY*/, 0 /*T_PREOUTLAYFIID*/, 
+                0 /*T_GROUNDID*/, 1 /*T_BUYGOAL*/, date'0001-01-01' /*T_COMMDATE*/, 0 /*T_PAYMENTSMETHOD*/, 0 /*T_FIXSUM*/, 
+                chr(1) /*T_NUMBER_PARTLY*/, date'0001-01-01' /*T_CHANGEDATE*/, 0 /*T_INSTANCE*/, 0 /*T_CHANGEKIND*/, TGT_PORTFOLIOID_2 /*T_PORTFOLIOID_2*/, 
+                NULL /*T_ISPARTYCLIENT*/, 0 /*T_PARTYCONTRID*/, 0 /*T_BRANCH*/, 0 /*T_AVOIRKIND*/, NULL /*T_OFBU*/, 
+                0 /*T_MARKETSCHEMEID*/, 0 /*T_DEPSETID*/, case when t_costchange=chr(88) then 2 else 0 end /*T_RETURNINCOMEKIND*/, 0 /*T_REQUESTID*/, NULL /*T_BLOCKED*/, 
+                nvl(tgt_country,chr(1)) /*T_COUNTRY*/, tgt_avoirissid /*T_PFI*/, NULL /*T_ISINSTANCY*/, 0 /*T_GENAGRID*/, 0 /*T_PARENTID*/, 
                 NULL /*T_ISNETTING*/, 0 /*T_VERSION*/, NULL /*T_CARRYWRT*/, NULL /*T_COUPONNDFL*/, NULL /*T_PROGNOS*/, 
                 NULL /*T_ISTRADEFINANCE*/, NULL /*T_SECTOR*/, NULL /*T_INCLUDE_DAY*/, NULL /*T_AUTOCLOSE*/, NULL /*T_OPENDATE*/, 
-                NULL /*T_KINDDEALPARTYCLIENT*/, NULL /*T_CURDEAL*/, NULL /*T_TAXHANDLE*/, NULL /*T_CURPAY*/, NULL /*T_CURGET*/, 
-                NULL /*T_TAXOWNBEGDATE*/, NULL /*T_DISCONT*/, NULL /*T_FACTRECEIVERID*/, NULL /*T_ISCONFIRMED*/, NULL /*T_ISREADY*/, 
-                NULL /*T_SUMPAY*/, NULL /*T_NEGATIVERATE*/, NULL /*T_ASSIGNMENT*/, NULL /*T_WITHPERCENT*/, NULL /*T_LIMITCUR*/, 
-                NULL /*T_DEBTLIMIT*/, NULL /*T_ISSUANCELIMIT*/, NULL /*T_TAX_AMOUNT*/, NULL /*T_CREDIT_TAX_AMOUNT*/, NULL /*T_CREDIT_TAX_CUR*/, 
-                NULL /*T_CREDIT_TAX_TERM*/, NULL /*T_PLACEMENT*/, NULL /*T_OFFER*/, NULL /*T_FLAGTYPEDEAL*/, NULL /*T_CASHDECISION*/, 
-                NULL /*T_ISPFI*/, NULL /*T_ADJDATETYPE*/, NULL /*T_SUBORDINATEDDATE*/, NULL /*T_CAPITALNOTINCLUDED*/, NULL /*T_ISSPOT*/, 
-                NULL /*T_CALCPFI*/, NULL /*T_PAYMAGENT*/, NULL /*T_AUTOPLACEMENT*/
+                0 /*T_KINDDEALPARTYCLIENT*/, 0 /*T_CURDEAL*/, NULL /*T_TAXHANDLE*/, 0 /*T_CURPAY*/, 0 /*T_CURGET*/, 
+                date'0001-01-01' /*T_TAXOWNBEGDATE*/, 0 /*T_DISCONT*/, 0 /*T_FACTRECEIVERID*/, NULL /*T_ISCONFIRMED*/, NULL /*T_ISREADY*/, 
+                0 /*T_SUMPAY*/, NULL /*T_NEGATIVERATE*/, NULL /*T_ASSIGNMENT*/, NULL /*T_WITHPERCENT*/, 0 /*T_LIMITCUR*/, 
+                0 /*T_DEBTLIMIT*/, 0 /*T_ISSUANCELIMIT*/, 0 /*T_TAX_AMOUNT*/, 0 /*T_CREDIT_TAX_AMOUNT*/, 0 /*T_CREDIT_TAX_CUR*/, 
+                0 /*T_CREDIT_TAX_TERM*/, NULL /*T_PLACEMENT*/, NULL /*T_OFFER*/, 0 /*T_FLAGTYPEDEAL*/, NULL /*T_CASHDECISION*/, 
+                NULL /*T_ISPFI*/, 0 /*T_ADJDATETYPE*/, date'0001-01-01' /*T_SUBORDINATEDDATE*/, NULL /*T_CAPITALNOTINCLUDED*/, NULL /*T_ISSPOT*/, 
+                0 /*T_CALCPFI*/, 0 /*T_PAYMAGENT*/, NULL /*T_AUTOPLACEMENT*/
         from dtxdeal_tmp 
         where t_replstate=0 and t_action=1;   
         WRITE_LOG_FINISH('Заполнение DDL_TICK_DBT (t_action=1)', 80);
         
         deb('Заполнение DDL_LEG_DBT по первой части (t_action=1)');
-        insert /*+ parallel(4) */ into ddl_leg_dbt(
+        insert /*+parallel(4)*/ into ddl_leg_dbt(
                 T_ID, T_DEALID, T_LEGID, T_PFI, T_CFI, T_START, T_MATURITY, T_EXPIRY, T_PRINCIPAL, T_PRICE, T_BASIS, T_DURATION, T_PITCH, T_COST, T_MODE, T_CLOSED, T_REFRATE, T_FACTOR, T_FORMULA, T_VERSION, 
                 T_RESERVE0, T_PERIODNUMBER, T_PERIODTYPE, T_DIFF, T_PAYDAY, T_LEGKIND, T_SCALE, T_POINT, T_ISCALCUSED, T_LEGNUMBER, T_RELATIVEPRICE, T_NKD, T_TOTALCOST, T_MATURITYISPRINCIPAL, T_REGISTRAR, 
                 T_INCOMERATE, T_INCOMESCALE, T_INCOMEPOINT, T_INTERESTSTART, T_RECEIPTAMOUNT, T_REGISTRARCONTRID, T_PRINCIPALBASE, T_PRINCIPALDIFF, T_STARTBASE, T_STARTDIFF, T_BASE, T_PAYREGTAX, T_RETURNINCOME, T_REJECTDATE, T_DELIVERINGFIID, 
@@ -691,24 +698,25 @@ is
                 T_DMAXPAY, T_QRETURN, T_QRECEIVE, T_SUMINCOME, T_MOVEDATE, T_NOTICEDURATION, T_PLANMATURITY)
         select
                 DDL_LEG_DBT_SEQ.nextval, TGT_DEALID /*T_DEALID*/, 0 /*T_LEGID*/, TGT_AVOIRISSID /*T_PFI*/, tgt_currencyid /*T_CFI*/, 
-                NULL /*T_START*/, TGT_MATURITY /*T_MATURITY*/, TGT_EXPIRY /*T_EXPIRY*/, t_amount /*T_PRINCIPAL*/, tgt_price /*T_PRICE*/, 
-                case when T_REPOBASE>0 then T_REPOBASE - 1 else 0 end /*T_BASIS*/, NULL /*T_DURATION*/, NULL /*T_PITCH*/, T_COST /*T_COST*/, NULL /*T_MODE*/, 
-                NULL /*T_CLOSED*/, NULL /*T_REFRATE*/, NULL /*T_FACTOR*/, TGT_FORMULA /*T_FORMULA*/, 0 /*T_VERSION*/, 
-                NULL /*T_RESERVE0*/, NULL /*T_PERIODNUMBER*/, NULL /*T_PERIODTYPE*/, NULL /*T_DIFF*/, NULL /*T_PAYDAY*/, 
-                0 /*T_LEGKIND*/, 1 /*T_SCALE*/, 4 /*T_POINT*/, NULL /*T_ISCALCUSED*/, NULL /*T_LEGNUMBER*/, 
-                TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/, T_NKD /*T_NKD*/, T_TOTALCOST /*T_TOTALCOST*/, TGT_MATURITYISPRINCIPAL /*T_MATURITYISPRINCIPAL*/, NULL /*T_REGISTRAR*/, 
-                T_RATE /*T_INCOMERATE*/, 1 /*T_INCOMESCALE*/, 2 /*T_INCOMEPOINT*/, NULL /*T_INTERESTSTART*/, NULL /*T_RECEIPTAMOUNT*/, 
-                NULL /*T_REGISTRARCONTRID*/, NULL /*T_PRINCIPALBASE*/, NULL /*T_PRINCIPALDIFF*/, NULL /*T_STARTBASE*/, NULL /*T_STARTDIFF*/, 
-                NULL /*T_BASE*/, NULL /*T_PAYREGTAX*/, NULL /*T_RETURNINCOME*/, NULL /*T_REJECTDATE*/, NULL /*T_DELIVERINGFIID*/, 
-                NULL /*T_BITMASK*/, NULL /*T_OPERSTATE*/, NULL /*T_SUPPLYTIME*/, NULL /*T_TABLEPERCENT*/, NULL /*T_TYPEPERCENT*/, 
-                NULL /*T_CAPTION*/, NULL /*T_TYPEDATE*/, NULL /*T_COUNTDAY*/, NULL /*T_CORRECT*/, 0 /*T_PAYFIID*/, 
-                NULL /*T_NKDFIID*/, NULL /*T_SROK*/, NULL /*T_CLIRINGDATE*/, NULL /*T_CLIRINGCHANGE*/, NULL /*T_DEPOSITID*/, 
-                NULL /*T_DVP*/, NULL /*T_CLIRINGTIME*/, NULL /*T_SESSION*/, NULL /*T_D1*/, NULL /*T_D2*/, 
-                NULL /*T_DMAXPAY*/, NULL /*T_QRETURN*/, NULL /*T_QRECEIVE*/, NULL /*T_SUMINCOME*/, NULL /*T_MOVEDATE*/, 
-                NULL /*T_NOTICEDURATION*/, NULL /*T_PLANMATURITY*/
+                date'0001-01-01' /*T_START*/, TGT_MATURITY /*T_MATURITY*/, TGT_EXPIRY /*T_EXPIRY*/, t_amount /*T_PRINCIPAL*/, tgt_price /*T_PRICE*/, 
+                case when T_REPOBASE>0 then T_REPOBASE else 0 end /*T_BASIS*/, 0 /*T_DURATION*/, 0 /*T_PITCH*/, T_COST /*T_COST*/, 0 /*T_MODE*/, 
+                date'0001-01-01' /*T_CLOSED*/, 0 /*T_REFRATE*/, 0 /*T_FACTOR*/, TGT_FORMULA /*T_FORMULA*/, 0 /*T_VERSION*/, 
+                chr(1) /*T_RESERVE0*/, 0 /*T_PERIODNUMBER*/, 0 /*T_PERIODTYPE*/, 0 /*T_DIFF*/, 0 /*T_PAYDAY*/, 
+                0 /*T_LEGKIND*/, 1 /*T_SCALE*/, 4 /*T_POINT*/, NULL /*T_ISCALCUSED*/, chr(1) /*T_LEGNUMBER*/, 
+                TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/, T_NKD /*T_NKD*/, T_TOTALCOST /*T_TOTALCOST*/, TGT_MATURITYISPRINCIPAL /*T_MATURITYISPRINCIPAL*/, 0 /*T_REGISTRAR*/, 
+                T_RATE /*T_INCOMERATE*/, 1 /*T_INCOMESCALE*/, 2 /*T_INCOMEPOINT*/, date'0001-01-01' /*T_INTERESTSTART*/, 0 /*T_RECEIPTAMOUNT*/, 
+                0 /*T_REGISTRARCONTRID*/, 0 /*T_PRINCIPALBASE*/, 0 /*T_PRINCIPALDIFF*/, 0 /*T_STARTBASE*/, 0 /*T_STARTDIFF*/, 
+                0 /*T_BASE*/, NULL /*T_PAYREGTAX*/, 0 /*T_RETURNINCOME*/, date'0001-01-01' /*T_REJECTDATE*/, -1 /*T_DELIVERINGFIID*/, 
+                0 /*T_BITMASK*/, 0 /*T_OPERSTATE*/, date'0001-01-01' /*T_SUPPLYTIME*/, NULL /*T_TABLEPERCENT*/, 0 /*T_TYPEPERCENT*/, 
+                0 /*T_CAPTION*/, 0 /*T_TYPEDATE*/, 0 /*T_COUNTDAY*/, 0 /*T_CORRECT*/, 0 /*T_PAYFIID*/, 
+                0 /*T_NKDFIID*/, NULL /*T_SROK*/, date'0001-01-01' /*T_CLIRINGDATE*/, NULL /*T_CLIRINGCHANGE*/, 0 /*T_DEPOSITID*/, 
+                NULL /*T_DVP*/, date'0001-01-01' /*T_CLIRINGTIME*/, 0 /*T_SESSION*/, 0 /*T_D1*/, 0 /*T_D2*/, 
+                date'0001-01-01' /*T_DMAXPAY*/, 0 /*T_QRETURN*/, 0 /*T_QRECEIVE*/, 0 /*T_SUMINCOME*/, date'0001-01-01' /*T_MOVEDATE*/, 
+                0 /*T_NOTICEDURATION*/, date'0001-01-01' /*T_PLANMATURITY*/
                 from dtxdeal_tmp 
                 where t_replstate=0 and t_action=1;
         WRITE_LOG_FINISH('Заполнение DDL_LEG_DBT по первой части (t_action=1)', 80);
+        commit;
         
         deb('Заполнение DDL_LEG_DBT по второй части (t_action=1)');
         insert /*+ parallel(4) */ into ddl_leg_dbt(
@@ -720,36 +728,35 @@ is
         select
                 DDL_LEG_DBT_SEQ.nextval, TGT_DEALID /*T_DEALID*/, 0 /*T_LEGID*/, TGT_AVOIRISSID /*T_PFI*/, tgt_currencyid /*T_CFI*/, 
                 NULL /*T_START*/, TGT_MATURITY2 /*T_MATURITY*/, TGT_EXPIRY2 /*T_EXPIRY*/, t_amount /*T_PRINCIPAL*/, t_price2 /*T_PRICE*/, 
-                case when T_REPOBASE>0 then T_REPOBASE - 1 else 0 end  /*T_BASIS*/, NULL /*T_DURATION*/, NULL /*T_PITCH*/, T_COST2 /*T_COST*/, NULL /*T_MODE*/, 
-                NULL /*T_CLOSED*/, NULL /*T_REFRATE*/, NULL /*T_FACTOR*/, TGT_FORMULA /*T_FORMULA*/, 0 /*T_VERSION*/, 
-                NULL /*T_RESERVE0*/, NULL /*T_PERIODNUMBER*/, NULL /*T_PERIODTYPE*/, NULL /*T_DIFF*/, NULL /*T_PAYDAY*/, 
-                2 /*T_LEGKIND*/, 1 /*T_SCALE*/, 4 /*T_POINT*/, NULL /*T_ISCALCUSED*/, NULL /*T_LEGNUMBER*/, 
-                TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/, T_NKD2 /*T_NKD*/, T_TOTALCOST2 /*T_TOTALCOST*/, TGT_MATURITYISPRINCIPAL2 /*T_MATURITYISPRINCIPAL*/, NULL /*T_REGISTRAR*/, 
-                T_RATE /*T_INCOMERATE*/, 1 /*T_INCOMESCALE*/, 2 /*T_INCOMEPOINT*/, NULL /*T_INTERESTSTART*/, NULL /*T_RECEIPTAMOUNT*/, 
-                NULL /*T_REGISTRARCONTRID*/, NULL /*T_PRINCIPALBASE*/, NULL /*T_PRINCIPALDIFF*/, NULL /*T_STARTBASE*/, NULL /*T_STARTDIFF*/, 
-                NULL /*T_BASE*/, NULL /*T_PAYREGTAX*/, NULL /*T_RETURNINCOME*/, NULL /*T_REJECTDATE*/, NULL /*T_DELIVERINGFIID*/, 
-                NULL /*T_BITMASK*/, NULL /*T_OPERSTATE*/, NULL /*T_SUPPLYTIME*/, NULL /*T_TABLEPERCENT*/, NULL /*T_TYPEPERCENT*/, 
-                NULL /*T_CAPTION*/, NULL /*T_TYPEDATE*/, NULL /*T_COUNTDAY*/, NULL /*T_CORRECT*/, 0 /*T_PAYFIID*/, 
-                NULL /*T_NKDFIID*/, NULL /*T_SROK*/, NULL /*T_CLIRINGDATE*/, NULL /*T_CLIRINGCHANGE*/, NULL /*T_DEPOSITID*/, 
-                NULL /*T_DVP*/, NULL /*T_CLIRINGTIME*/, NULL /*T_SESSION*/, NULL /*T_D1*/, NULL /*T_D2*/, 
-                NULL /*T_DMAXPAY*/, NULL /*T_QRETURN*/, NULL /*T_QRECEIVE*/, NULL /*T_SUMINCOME*/, NULL /*T_MOVEDATE*/, 
-                NULL /*T_NOTICEDURATION*/, NULL /*T_PLANMATURITY*/
+                case when T_REPOBASE>0 then T_REPOBASE  else 0 end  /*T_BASIS*/, 0 /*T_DURATION*/, 0 /*T_PITCH*/, T_COST2 /*T_COST*/, 0 /*T_MODE*/, 
+                date'0001-01-01' /*T_CLOSED*/, 0 /*T_REFRATE*/, 0 /*T_FACTOR*/, TGT_FORMULA /*T_FORMULA*/, 0 /*T_VERSION*/, 
+                chr(1) /*T_RESERVE0*/, 0 /*T_PERIODNUMBER*/, 0 /*T_PERIODTYPE*/, 0 /*T_DIFF*/, 0 /*T_PAYDAY*/, 
+                2 /*T_LEGKIND*/, 1 /*T_SCALE*/, 4 /*T_POINT*/, NULL /*T_ISCALCUSED*/, chr(1) /*T_LEGNUMBER*/, 
+                TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/, T_NKD2 /*T_NKD*/, T_TOTALCOST2 /*T_TOTALCOST*/, TGT_MATURITYISPRINCIPAL2 /*T_MATURITYISPRINCIPAL*/, 0 /*T_REGISTRAR*/, 
+                T_RATE /*T_INCOMERATE*/, 1 /*T_INCOMESCALE*/, 2 /*T_INCOMEPOINT*/, date'0001-01-01' /*T_INTERESTSTART*/, 0 /*T_RECEIPTAMOUNT*/, 
+                0 /*T_REGISTRARCONTRID*/, 0 /*T_PRINCIPALBASE*/, 0 /*T_PRINCIPALDIFF*/, 0 /*T_STARTBASE*/, 0 /*T_STARTDIFF*/, 
+                0 /*T_BASE*/, NULL /*T_PAYREGTAX*/, 0 /*T_RETURNINCOME*/, date'0001-01-01' /*T_REJECTDATE*/, -1 /*T_DELIVERINGFIID*/, 
+                0 /*T_BITMASK*/, 0 /*T_OPERSTATE*/, date'0001-01-01' /*T_SUPPLYTIME*/, NULL /*T_TABLEPERCENT*/, 0 /*T_TYPEPERCENT*/, 
+                0 /*T_CAPTION*/, 0 /*T_TYPEDATE*/, 0 /*T_COUNTDAY*/, 0 /*T_CORRECT*/, 0 /*T_PAYFIID*/, 
+                0 /*T_NKDFIID*/, NULL /*T_SROK*/, date'0001-01-01' /*T_CLIRINGDATE*/, NULL /*T_CLIRINGCHANGE*/, 0 /*T_DEPOSITID*/, 
+                NULL /*T_DVP*/, date'0001-01-01' /*T_CLIRINGTIME*/, 0 /*T_SESSION*/, 0 /*T_D1*/, 0 /*T_D2*/, 
+                date'0001-01-01' /*T_DMAXPAY*/, 0 /*T_QRETURN*/, 0 /*T_QRECEIVE*/, 0 /*T_SUMINCOME*/, date'0001-01-01' /*T_MOVEDATE*/, 
+                0 /*T_NOTICEDURATION*/, date'0001-01-01' /*T_PLANMATURITY*/
                 from dtxdeal_tmp 
                 where t_replstate=0 and t_action=1 and TGT_ISREPO=chr(88);
         WRITE_LOG_FINISH('Заполнение DDL_LEG_DBT по второй части (t_action=1)', 80);
-        
-        
+        commit;      
         
         
         -- Обработка изменений        
         deb('Изменение DDL_TICK_DBT (t_action=2)');
         
-        MERGE INTO ddl_tick_dbt tgt
+        MERGE /*+parallel(4)*/INTO ddl_tick_dbt tgt
         USING (select * from dtxdeal_tmp where t_action=2 and t_replstate=0) sou on (tgt.t_dealid=sou.tgt_dealid)
         WHEN MATCHED THEN UPDATE SET 
                 T_BOFFICEKIND=TGT_BOFFICEKIND /*T_BOFFICEKIND*/,                                                T_DEALTYPE=TGT_DEALKIND /*T_DEALTYPE*/,  
                 T_DEALCODE=T_CODE /*T_DEALCODE*/,       T_DEALCODETS=T_EXTCODE /*T_DEALCODETS*/,                T_TYPEDOC=t_tskind /*T_TYPEDOC*/, 
-                T_PARTYID=TGT_PARTYID /*T_PARTYID*/,    T_BROKERID=TGT_BROKERID /*T_BROKERID*/,                 T_MARKETID=TGT_MARKETID /*T_MARKETID*/, 
+                T_PARTYID=nvl(TGT_PARTYID,-1) /*T_PARTYID*/,    T_BROKERID=nvl(TGT_BROKERID,-1) /*T_BROKERID*/, T_MARKETID=nvl(TGT_MARKETID,-1) /*T_MARKETID*/, 
                 T_DEALDATE=T_DATE /*T_DEALDATE*/,       T_REGDATE=T_DATE /*T_REGDATE*/,                         T_DEALSTATUS=2 /*T_DEALSTATUS*/,  
                 T_DEPARTMENT=tgt_department /*T_DEPARTMENT*/,       T_OPER=g_oper /*T_OPER*/,                   T_FLAG1=case when tgt_marketid>0 then 'X' else chr(0) end /*T_FLAG1*/, 
                 T_FLAG5=case when T_COSTCHANGE=chr(88) then chr(88) else chr(0) end/*T_FLAG5*/,  
@@ -759,8 +766,9 @@ is
                 T_AVOIRKIND=TGT_AVOIRKIND /*T_AVOIRKIND*/,                                                      T_RETURNINCOMEKIND=case when t_costchange=chr(88) then 2 end /*T_RETURNINCOMEKIND*/,  
                 T_COUNTRY=tgt_country /*T_COUNTRY*/,    T_PFI=tgt_avoirissid /*T_PFI*/;
         WRITE_LOG_FINISH('Обновление DDL_TICK_DBT (t_action=2)', 80);
+        commit;
                 
-        MERGE INTO (select * from ddl_leg_dbt where t_legkind=0) tgt
+        MERGE /*+parallel(4)*/INTO (select * from ddl_leg_dbt where t_legkind=0) tgt
         USING (select * from dtxdeal_tmp where t_action=2 and t_replstate=0) sou on (tgt.t_dealid=sou.tgt_dealid)
         WHEN MATCHED THEN UPDATE SET 
                 T_PFI=TGT_AVOIRISSID /*T_PFI*/,         T_CFI=tgt_currencyid /*T_CFI*/,                         T_MATURITY=TGT_MATURITY /*T_MATURITY*/, 
@@ -770,8 +778,9 @@ is
                 T_RELATIVEPRICE=TGT_RELATIVEPRICE /*T_RELATIVEPRICE*/,  T_NKD=T_NKD /*T_NKD*/,                  T_TOTALCOST=T_TOTALCOST /*T_TOTALCOST*/, 
                 T_MATURITYISPRINCIPAL=TGT_MATURITYISPRINCIPAL /*T_MATURITYISPRINCIPAL*/,                        T_INCOMERATE=T_RATE /*T_INCOMERATE*/;
         WRITE_LOG_FINISH('Обновление DDL_LEG_DBT по первой части (t_action=2)', 80);
+        commit;
         
-        MERGE INTO (select * from ddl_leg_dbt where t_legkind=2) tgt
+        MERGE /*+parallel(4)*/INTO (select * from ddl_leg_dbt where t_legkind=2) tgt
         USING (select * from dtxdeal_tmp where t_action=2 and t_replstate=0) sou on (tgt.t_dealid=sou.tgt_dealid)
         WHEN MATCHED THEN UPDATE SET 
                 T_PFI=TGT_AVOIRISSID /*T_PFI*/,         T_CFI=tgt_currencyid /*T_CFI*/,                         T_MATURITY=TGT_MATURITY2 /*T_MATURITY*/, 
@@ -782,7 +791,7 @@ is
                 T_TOTALCOST=T_TOTALCOST2 /*T_TOTALCOST*/,                                                       T_MATURITYISPRINCIPAL=TGT_MATURITYISPRINCIPAL2 /*T_MATURITYISPRINCIPAL*/,                        
                 T_INCOMERATE=T_RATE /*T_INCOMERATE*/;
         WRITE_LOG_FINISH('Обновление DDL_LEG_DBT по второй части (t_action=2)', 80);
-        
+        commit;
         
         -- Обработка удалений
         deb('Удаление из DDL_TICK_DBT (t_action=3)');    
@@ -828,18 +837,26 @@ is
         
         ----------------------------------------------------------------------------
         WRITE_LOG_START;
-        deb('Запись REPLSTATE в DSPGROUND_DBT / DSPGRDOC_DBT');
-        insert into dspground_dbt( t_kind, t_DocLog, t_Direction, t_Receptionist, t_References, t_AltXld, t_SignedDate, t_Party)
-        select 26, 513, 2, 11, 1, T_CONTRNUM, max(T_CONTRDATE), max(TGT_PARTYID) from dtxdeal_tmp group by T_CONTRNUM; 
+        deb('Запись в DSPGROUND_DBT / DSPGRDOC_DBT');
+        execute immediate 'alter table DSPGROUND_DBT disable all triggers';
+        execute immediate 'alter table DSPGRDOC_DBT disable all triggers';
+        delete /*+parallel(4)*/from dspground_dbt where t_kind=26 and t_DocLog=513 and  t_AltXld in (select T_CONTRNUM from dtxdeal_tmp where t_replstate=0);
+        commit;
+        insert /*+parallel(4)*/into dspground_dbt( t_spgroundid, t_kind, t_DocLog, t_Direction, t_Receptionist, t_References, t_AltXld, t_SignedDate, t_Party)
+        select dspground_dbt_seq.nextval, 26, 513, 2, 11, 1, T_CONTRNUM, md, mp from (
+        select T_CONTRNUM, max(T_CONTRDATE) md, max(TGT_PARTYID) mp from dtxdeal_tmp where t_replstate=0 group by T_CONTRNUM);
+        commit;
         
         delete /*+ parallel(4) */ dspgrdoc_dbt where (t_SourceDocKind, t_SourceDocID) in (select tgt_bofficekind, tgt_dealid from dtxdeal_tmp where t_replstate=0); 
         commit;
         
-        insert into dspgrdoc_dbt( t_SourceDocKind, t_SourceDocID, t_SPGroundID)
+        insert /*+parallel(4)*/ into dspgrdoc_dbt( t_SourceDocKind, t_SourceDocID, t_SPGroundID)
         select tgt_bofficekind, tgt_dealid, t_SPGroundID
         from dtxdeal_tmp dl join dspground_dbt dc on ( dl.t_contrnum=dc.t_AltXld and dl.tgt_partyid=dc.t_Party);
-        WRITE_LOG_FINISH('Запись REPLSTATE в DSPGROUND_DBT / DSPGRDOC_DBT', 80);
+        WRITE_LOG_FINISH('Запись в DSPGROUND_DBT / DSPGRDOC_DBT', 80);
         commit;
+        execute immediate 'alter table DSPGROUND_DBT enable all triggers';
+        execute immediate 'alter table DSPGRDOC_DBT enable all triggers';
         
         --==========================================================================
         --==========================================================================
@@ -851,63 +868,63 @@ is
         execute immediate 'alter table dnotetext_dbt disable all triggers';        
         
         delete /*+ parallel(8) */ from dnotetext_dbt where T_OBJECTTYPE=101 and T_DOCUMENTID in (
-        select lpad( tgt_dealid, 10, '0') from dtxdeal_tmp where t_replstate=0); 
+        select lpad( tgt_dealid, 34, '0') from dtxdeal_tmp where t_replstate=0); 
         WRITE_LOG_FINISH('Удаление старых примечаний к сделкам', 80);
         commit;
         
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 101, g_oper, t_date, date'0001-01-01', t_conditions, date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 101, g_oper, t_date, date'0001-01-01', t_conditions, date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and t_conditions is not null;
         l_count := l_count + sql%rowcount;
         commit;
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 102, g_oper, t_date, date'0001-01-01', T_MARKETCODE, date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 102, g_oper, t_date, date'0001-01-01', T_MARKETCODE, date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_MARKETCODE is not null;
         l_count := l_count + sql%rowcount;
         commit;
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 103, g_oper, t_date, date'0001-01-01', T_PARTYCODE, date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 103, g_oper, t_date, date'0001-01-01', T_PARTYCODE, date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_PARTYCODE is not null;
         l_count := l_count + sql%rowcount;
         commit;
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 23, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC), date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 23, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC), date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC > 0;
         l_count := l_count + sql%rowcount;
         commit;
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 27, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_DEF), date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 27, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_DEF), date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_DEF > 0;
         l_count := l_count + sql%rowcount;
         commit;        
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 28, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_VAL), date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 28, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_VAL), date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_VAL > 0;
         l_count := l_count + sql%rowcount;
         commit;        
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 116, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_OUTLAY), date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 116, g_oper, t_date, date'0001-01-01', to_char(T_PRICE_CALC_OUTLAY), date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_OUTLAY > 0;
         l_count := l_count + sql%rowcount;
         commit;
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 26, g_oper, t_date, date'0001-01-01', T_DOPCONTROL_NOTE, date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 26, g_oper, t_date, date'0001-01-01', T_DOPCONTROL_NOTE, date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_DOPCONTROL_NOTE is not null;
         l_count := l_count + sql%rowcount;
         commit;
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 29, g_oper, t_date, date'0001-01-01', T_PRICE_CALC_MET_NOTE, date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 29, g_oper, t_date, date'0001-01-01', T_PRICE_CALC_MET_NOTE, date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_MET_NOTE is not null;
         l_count := l_count + sql%rowcount;
         commit;
-        insert /*+ parallel(4) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
-        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 10, '0'), 112, g_oper, t_date, date'0001-01-01', to_char(T_PAYMCUR), date'4000-01-01'
+        insert /*+ parallel(8) */ into dnotetext_dbt(T_ID, T_OBJECTTYPE, T_DOCUMENTID, T_NOTEKIND, T_OPER, T_DATE, T_TIME, T_TEXT, T_VALIDTODATE)
+        select dnotetext_dbt_seq.nextval, 101, lpad( tgt_dealid, 34, '0'), 112, g_oper, t_date, date'0001-01-01', to_char(T_PAYMCUR), date'4000-01-01'
         from dtxdeal_tmp where t_replstate=0 and T_PAYMCUR > 0;
         l_count := l_count + sql%rowcount;
         WRITE_LOG_FINISH('Запись новых примечаний к сделкам', 80, p_count => l_count);
         commit;
         
-        execute immediate 'alter table dnotetext_dbt enable all triggers';        
+        execute immediate 'alter table DNOTETEXT_DBT enable all triggers';        
         
         
         --==========================================================================
@@ -917,7 +934,7 @@ is
         deb('Запись категорий к сделкам');
         
         -- триггеры придется пока отключить, они мешают вставке в режиме direct path
-        execute immediate 'alter table dobjatcor_dbt disable all triggers';
+        execute immediate 'alter table DOBJATCOR_DBT disable all triggers';
         
 
         delete /*+ parallel(8) */ from dobjatcor_dbt where t_objecttype in (101,117) and t_object in (select lpad( tgt_dealid, 10, '0') from dtxdeal_tmp where t_replstate=0); 
@@ -926,7 +943,7 @@ is
         
         l_count := 0;
         -- Установка значения категории Сделка подлежит дополнительному контролю ( 32 )
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
         select dobjatcor_dbt_seq.nextval, 101, 32, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
         decode(T_DOPCONTROL, 1,1,  2,2,  3,3,  4,4,  5,5,  6,6,  7,9,  8,1,  9,92,  10,94,  11,95,  12,96,  13,13,  14,23,  15,25,  16,7,  17,8,  18,38,  19,938,  20,93,  21,913,  22,925,  T_DOPCONTROL) 
         from dtxdeal_tmp where t_replstate=0 and T_DOPCONTROL > 0 and tgt_BofficeKind in (101, 117);
@@ -934,28 +951,28 @@ is
         commit;
 
         -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
-        select dobjatcor_dbt_seq.nextval, 101, 21, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', decode(T_COSTCHANGEONCOMP, chr(0), 0, 1) 
-        from dtxdeal_tmp where t_replstate=0;
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select dobjatcor_dbt_seq.nextval, 101, 21, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 1 
+        from dtxdeal_tmp where t_replstate=0 and T_COSTCHANGEONCOMP = CHR(88);
         l_count := l_count + sql%rowcount;
         commit;
 
         -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
-        select dobjatcor_dbt_seq.nextval, 101, 22, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', decode(T_COSTCHANGEONAMOR, chr(0), 0, 1) 
-        from dtxdeal_tmp where t_replstate=0;
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select dobjatcor_dbt_seq.nextval, 101, 22, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 1 
+        from dtxdeal_tmp where t_replstate=0 and T_COSTCHANGEONAMOR = chr(88);
         l_count := l_count + sql%rowcount;
         commit;        
         
         -- Установка значения категории Признак изменения стоимости реализации/приобретения по 2 части Репо при выплате купонного дохода/дивидентов/частичного погашения ценных бумаг
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
         select dobjatcor_dbt_seq.nextval, 101, 33, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', T_FISSKIND 
         from dtxdeal_tmp where t_replstate=0;
         l_count := l_count + sql%rowcount;
         commit;
  
         -- Установка значения категории Способ определения РЦ ( 34 )
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
         select dobjatcor_dbt_seq.nextval, 101, 34, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 
         decode(T_PRICE_CALC_METHOD, 1,'10-00', 2,'10-80', 3,'11-00', 4,'11-01', 5,'12-50', 6,'12-51', 7,'12-80', 8,'12-81', 9,'19-00', 10,'20-80', 11,'21-00', 12,'21-01', 13,'22-10', 14,'22-11', 15,'22-20', 16,'22-21', 17,'22-30', 18,'22-31', 19,'22-40', 20,'22-41', 21,'22-50', 22,'22-51', 23,'22-60', 24,'22-61', 25,'22-70', 26,'22-71', 27,'22-80', 28,'22-81', 29,'29-00', 30,'31-00', 31,'31-01', 32,'32-50', 33,'32-51', 34,'99-00', 35,'11-80', 36,'11-81','null') 
         from dtxdeal_tmp where t_replstate=0 and T_PRICE_CALC_METHOD > 0;
@@ -963,49 +980,49 @@ is
         commit;       
         
         -- Признак урегулирования требований по ст.282 НК РФ.
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
-        select dobjatcor_dbt_seq.nextval, 101, 19, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', decode(T_ADJUSTMENT, chr(0), 0, 1) 
-        from dtxdeal_tmp where t_replstate=0 and T_ADJUSTMENT <> chr(0);
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select dobjatcor_dbt_seq.nextval, 101, 19, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 1 
+        from dtxdeal_tmp where t_replstate=0 and T_ADJUSTMENT = chr(88);
         l_count := l_count + sql%rowcount;
         commit;   
 
         -- Признак ограничения прав покупателя по сделке РЕПО - "Блокировка ц/б"
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
-        select dobjatcor_dbt_seq.nextval, 101, 103, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', decode(T_LIMIT, chr(0), 0, 1) 
-        from dtxdeal_tmp where t_replstate=0 and T_LIMIT <> chr(0);
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select dobjatcor_dbt_seq.nextval, 101, 103, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 1 
+        from dtxdeal_tmp where t_replstate=0 and T_LIMIT = chr(88);
         l_count := l_count + sql%rowcount;
         commit;           
         
         -- Признак изменения ставки - "Плавающая ставка"
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
-        select dobjatcor_dbt_seq.nextval, 101, 26, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', decode(T_CHRATE, chr(0), 0, 1) 
-        from dtxdeal_tmp where t_replstate=0 and T_CHRATE <> chr(0);
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select dobjatcor_dbt_seq.nextval, 101, 26, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 1 
+        from dtxdeal_tmp where t_replstate=0 and T_CHRATE = chr(88);
         l_count := l_count + sql%rowcount;
         commit;           
 
         -- Признак изменения ставки - "Принадлежность дивидендов"
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
-        select dobjatcor_dbt_seq.nextval, 101, 25, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31',  decode(T_DIV, chr(0), 0, 1) 
-        from dtxdeal_tmp where t_replstate=0 and T_DIV <> chr(0);
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select dobjatcor_dbt_seq.nextval, 101, 25, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31',  1 
+        from dtxdeal_tmp where t_replstate=0 and T_DIV = chr(88);
         l_count := l_count + sql%rowcount;
         commit;     
         
         -- Признак исполнения сделки в любой день
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
-        select dobjatcor_dbt_seq.nextval, 101, 20, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', decode(T_ATANYDAY, chr(0), 0, 1) 
-        from dtxdeal_tmp where t_replstate=0 and T_ATANYDAY <> chr(0);
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        select dobjatcor_dbt_seq.nextval, 101, 20, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', 1 
+        from dtxdeal_tmp where t_replstate=0 and T_ATANYDAY = chr(88);
         l_count := l_count + sql%rowcount;
         commit;  
 
         -- "Место заключения сделки"
-        insert /*+ append */ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
+        insert /*+parallel(8)*/ into dobjatcor_dbt(t_id, t_objecttype, t_groupid, t_object, t_general, t_oper, T_VALIDFROMDATE, T_VALIDTODATE, t_attrid)
         select dobjatcor_dbt_seq.nextval, 101, 105, lpad( tgt_dealid, 10, '0'), chr(88), g_oper, date'0001-01-01', date'9999-12-31', T_COUNTRY 
-        from dtxdeal_tmp where t_replstate=0 and T_COUNTRY is not null and T_COUNTRY <> 158;
+        from dtxdeal_tmp where t_replstate=0 and T_COUNTRY is not null and T_COUNTRY not in (158,165);
         l_count := l_count + sql%rowcount;
         WRITE_LOG_FINISH('Запись новых категорий к сделкам', 80, p_count => l_count); 
         commit;          
 
-        execute immediate 'alter table dobjatcor_dbt enable all triggers';
+        execute immediate 'alter table DOBJATCOR_DBT enable all triggers';
         
         --==========================================================================
         --==========================================================================
@@ -1023,7 +1040,7 @@ is
 
 
     -- формирует записи в целевой системе на основе таблицы снимка
-    procedure demands_create_records
+    procedure DEMANDS_CREATE_RECORDS
     is
         l_counter number := 0;  -- счетчик обработанных строк
     begin
@@ -1038,8 +1055,8 @@ is
         execute immediate 'alter table ddlrq_dbt disable all triggers';
                 
         deb('Заполнение DDLRQ_DBT (t_action=1)');
-        insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL)
-        select TGT_DEMANDID, TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, T_PART, TGT_KIND/*T_KIND*/, TGT_SUBKIND, TGT_TYPE, TGT_STATE /*T_NUM*/, T_SUM, TGT_FIID, TGT_PARTY, -1, -1/*T_PLACEID*/, TGT_STATE, TGT_PLANDATE, TGT_FACTDATE, CHR(0), CHR(0)/*T_NETTING*/, null, 0, TGT_CHANGEDATE, 0 /*T_ACTION*/, 0, 2908, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0
+        insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+        select TGT_DEMANDID, TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, T_PART, TGT_KIND/*T_KIND*/, TGT_SUBKIND, TGT_TYPE, TGT_STATE /*T_NUM*/, T_SUM, TGT_FIID, TGT_PARTY, -1, -1/*T_PLACEID*/, TGT_STATE, TGT_PLANDATE, TGT_FACTDATE, CHR(0), CHR(0)/*T_NETTING*/, null, 0, TGT_CHANGEDATE, 0 /*T_ACTION*/, 0, 2908, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
         from dtxdemand_tmp where t_replstate=0 and t_action=1;
         WRITE_LOG_FINISH('Заполнение DDLRQ_DBT (t_action=1)', 90); 
         COMMIT;
@@ -1062,8 +1079,9 @@ is
 
         WRITE_LOG_START;
         deb('Удаление из DDLRQ_DBT (t_action=3)');
-        delete from ddlrq_dbt where t_id in (select TGT_DEMANDID from dtxdemand_tmp where t_action=3 and t_replstate=0); 
+        delete /*+parallel(4)*/ from ddlrq_dbt where t_id in (select TGT_DEMANDID from dtxdemand_tmp where t_action=3 and t_replstate=0);
         WRITE_LOG_FINISH('Удаление из DDLRQ_DBT (t_action=3)', 90);         
+        commit;
         
         execute immediate 'alter table ddlrq_dbt enable all triggers';
         
@@ -1076,7 +1094,7 @@ is
         commit;
         
         WRITE_LOG_START;
-        update dtxreplobj_dbt set t_objstate=2 where T_OBJECTTYPE=90 and t_objectid in (select t_demandid from dtxdemand_tmp where t_replstate=0 and t_action=3);
+        update /*+parallel(4)*/ dtxreplobj_dbt set t_objstate=2 where T_OBJECTTYPE=90 and t_objectid in (select t_demandid from dtxdemand_tmp where t_replstate=0 and t_action=3);
         WRITE_LOG_FINISH('Запись платежей в DTXREPLOBJ_DBT - удаления', 90);
         commit;
         
@@ -1138,7 +1156,7 @@ is
 
 
     -- формирует записи в целевой системе на основе таблицы снимка
-    procedure courses_create_records
+    procedure COURSES_CREATE_RECORDS
     is
         l_counter number := 0;  -- счетчик обработанных строк
     begin
@@ -1149,51 +1167,51 @@ is
         deb('Заполнение DRATEDEF_DBT');
 
         -- Значение из DRATEDEF_DBT преходит в историю, если среди новых записей по этому курсу есть одна с флажком TGT_ISLASTDATE
-        insert into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
+        insert /*+parallel(4)*/ into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
         select T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT  
         from  dratedef_dbt where t_rateid in (select tgt_rateid from dtxcourse_tmp where TGT_ISLASTDATE=chr(88) and t_action=1 and t_replstate=0);
         --l_counter := l_counter + sql%rowcount;
         WRITE_LOG_FINISH('Перенос DRATEDEF в DRATEHIST', 70); 
-        --commit;
+        commit;
 
         -- сработает только для вставки (TGT_NEWRATEID есть только у нее)
         -- если курс в dratedef_dbt отсутствует вообще, добавим его. tgt_rateid уже есть
         -- пойдет строка с TGT_ISLASTDATE = 'X' и TGT_NEWRATEID IS NOT NULL
-        insert into dratedef_dbt(T_RATEID, T_FIID, T_OTHERFI, T_NAME, T_DEFINITION, T_TYPE, T_ISDOMINANT, T_ISRELATIVE, T_INFORMATOR, T_MARKET_PLACE, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_SECTION)
+        insert /*+parallel(4)*/ into dratedef_dbt(T_RATEID, T_FIID, T_OTHERFI, T_NAME, T_DEFINITION, T_TYPE, T_ISDOMINANT, T_ISRELATIVE, T_INFORMATOR, T_MARKET_PLACE, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_SECTION)
         select TGT_NEWRATEID, TGT_FIID, TGT_BASEFIID, 'Курс для ' || TGT_BASEFIID, chr(1), TGT_TYPE, TGT_ISDOMINANT, TGT_ISRELATIVE, TGT_MARKETID, TGT_MARKETID, chr(0), TGT_RATE, T_SCALE, T_POINT, t_instancedate, date'0001-01-01', g_oper, t_ratedate, TGT_SECTORID     
         from dtxcourse_tmp where TGT_ISLASTDATE = 'X' and TGT_NEWRATEID IS NOT NULL AND T_REPLSTATE=0;
         WRITE_LOG_FINISH('Вставка в DRATEDEF', 70);
-        --commit;
+        commit;
         
         -- для всех остальных (вставок и изменений) обновляем значение в dratedef_dbt
-        merge into dratedef_dbt tgt
+        merge /*+parallel(4)*/ into dratedef_dbt tgt
         using (select * from dtxcourse_tmp where TGT_ISLASTDATE = 'X') sou
         on (sou.tgt_rateid = tgt.t_rateid)
         when matched then update 
         set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
             tgt.T_INPUTTIME=date'0001-01-01', tgt.T_OPER=g_oper, tgt.T_SINCEDATE=sou.T_RATEDATE;
         WRITE_LOG_FINISH('Обновление DRATEDEF', 70);
-        --commit;
+        commit;
 
         -- вставка в dratehist_Dbt
-        insert /*+ append */ into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
+        insert /*+parallel(4)*/ into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
         select nvl(TGT_RATEID,TGT_NEWRATEID), chr(0),  TGT_RATE, T_SCALE, T_POINT, T_INSTANCEDATE, date'0001-01-01', g_oper, T_RATEDATE, CHR(0)
         from dtxcourse_tmp where t_replstate=0 and t_action=1 and TGT_ISLASTDATE is null;
         WRITE_LOG_FINISH('Вставка в DRATEHIST', 70);
-        --commit;
+        commit;
 
         -- обновляем значение в dratehist_dbt для action=2
-        merge into dratehist_dbt tgt
+        merge /*+parallel(4)*/into dratehist_dbt tgt
         using (select * from dtxcourse_tmp where TGT_ISLASTDATE is null and t_action=2 and t_replstate=0) sou
         on (sou.tgt_rateid = tgt.t_rateid and tgt.T_SINCEDATE=sou.T_RATEDATE)
         when matched then update 
         set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
             tgt.T_INPUTTIME=date'0001-01-01', tgt.T_OPER=g_oper;
         WRITE_LOG_FINISH('Обновление DRATEHIST', 70);        
-        --commit;
+        commit;
         
         -- удаляем значение из dratehist_dbt для acction=3
-        delete from dratehist_dbt where (t_rateid, t_sincedate) in
+        delete /*+parallel(4)*/ from dratehist_dbt where (t_rateid, t_sincedate) in
         (select tgt_rateid, T_RATEDATE from dtxcourse_tmp where t_replstate=0 and t_action=3);
         WRITE_LOG_FINISH('Удаление из DRATEHIST', 70);
         commit;
@@ -1204,20 +1222,23 @@ is
         --=====================================================================================
         
         deb('Заполняем dtxreplobj_Dbt');
-        delete from dtxreplobj_dbt where t_objecttype=70 and t_objectid in 
+        delete /*+parallel(4)*/ from dtxreplobj_dbt where t_objecttype=70 and t_objectid in 
         (select t_courseid from dtxcourse_tmp where t_replstate=0 and t_action = 1);
+        commit;
 
-        insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) 
+        insert /*+parallel(4)*/into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) 
         select 70, t_courseid, t_type, nvl(tgt_rateid, tgt_newrateid), 1, 0  
         from dtxcourse_tmp where t_replstate=0 and t_action=1;
+        commit;
         
-        update dtxreplobj_dbt set t_objstate=2 where (T_OBJECTTYPE, T_OBJECTID) in   
+        update /*+parallel(4)*/ dtxreplobj_dbt set t_objstate=2 where (T_OBJECTTYPE, T_OBJECTID) in   
         (select 70, t_courseid from dtxcourse_tmp where t_replstate=0 and t_action=3);
         WRITE_LOG_FINISH('Вставка записей в DTXREPLOBJ', 70);
+        commit;
         
-        update dtxcourse_dbt set t_replstate=1 where (t_courseid, t_instancedate) in
+        update /*+parallel(4)*/ dtxcourse_dbt set t_replstate=1 where (t_courseid, t_instancedate) in
         (select t_courseid, t_instancedate from dtxcourse_tmp where t_replstate=0); 
-        
+        commit;
 
         deb('Завершена процедура COURSES_CREATE_RECORDS');
     end courses_create_records;
@@ -1225,7 +1246,7 @@ is
 
 
     -- формирует записи в целевой системе на основе таблицы снимка
-    procedure comiss_create_records
+    procedure COMISS_CREATE_RECORDS
     is
         l_counter number := 0;  -- счетчик обработанных строк
     begin
@@ -1240,31 +1261,41 @@ is
         --=====================================================================================
         
         deb('Заполняем dtxreplobj_Dbt');
-        delete from dtxreplobj_dbt where t_objecttype=100 and t_objectid in 
+        delete /*+parallel(4)*/from dtxreplobj_dbt where t_objecttype=100 and t_objectid in 
         (select t_comissid from dtxcomiss_tmp where t_replstate=0 and t_action = 1);
-
-        insert into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) 
+        commit;
+        
+        insert /*+parallel(4)*/into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE) 
         select 100, t_comissid, t_type, tgt_comissid, 1, 0  
         from dtxcomiss_tmp where t_replstate=0 and t_action=1;
+        commit;
         
-        update dtxreplobj_dbt set t_objstate=2 where (T_OBJECTTYPE, T_OBJECTID) in   
+        update /*+parallel(4)*/dtxreplobj_dbt set t_objstate=2 where (T_OBJECTTYPE, T_OBJECTID) in   
         (select 100, t_comissid from dtxcomiss_tmp where t_replstate=0 and t_action=3);
         WRITE_LOG_FINISH('Вставка записей в DTXREPLOBJ', 100);
+        commit;
         
-        update dtxcomiss_dbt set t_replstate=1 where (t_comissid, t_instancedate) in
+        update /*+parallel(4)*/dtxcomiss_dbt set t_replstate=1 where (t_comissid, t_instancedate) in
         (select t_comissid, t_instancedate from dtxcomiss_tmp where t_replstate=0);         
-
+        
+        commit;
         deb('Завершена процедура COMISS_CREATE_RECORDS');
     end comiss_create_records;
 
 
-    procedure load_deals_by_period(p_startdate date, p_enddate date default null)
+    procedure load_deals_by_period(p_startdate date, p_enddate date default null, p_stage number default null)
     is
         l_enddate date;
         l_count number := 0;
     begin
         deb('Запущена процедура LOAD_DEALS_BY_PERIOD');
         initialize;
+        
+        if p_stage not in (1,2) then
+            deb('Некорректное значение параметра p_stage. Завершение процедуры.');
+            WRITE_LOG_FINISH('Некорректное значение параметра p_stage', 80);
+            return;
+        end if;
         
         l_enddate := nvl( p_enddate, p_startdate + 1 - 1/24/60/60); 
     
@@ -1278,44 +1309,47 @@ is
         values (g_SESSION_ID, 'LOAD_DEALS', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
         commit;
         --==================================================================================================
-    
-        -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
-        deals_create_snapshot(p_startdate, l_enddate);
         
+        if p_stage is null  or  p_stage = 1   
+        then    
+
+            -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
+            deals_create_snapshot(p_startdate, l_enddate);
         
-        -- выполняет общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
-        WRITE_LOG_START;
-        -- исключает дубли записей внутри одного дня
-        update dtxdeal_tmp set t_replstate=2 where rowid in 
-        (select lag(rowid) over(partition by t_dealid, t_instancedate order by null) from dtxdeal_tmp);
-        l_count := l_count + sql%rowcount;
+            -- выполняет общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+            WRITE_LOG_START;
+            -- исключает дубли записей внутри одного дня
+            update dtxdeal_tmp set t_replstate=2 where rowid in 
+            (select lag(rowid) over(partition by t_dealid, t_instancedate order by null) from dtxdeal_tmp);
+            l_count := l_count + sql%rowcount;
+            
+            -- исключает лишние операции обновления, оставляя толко последнюю из них по каждой dealid 
+            update dtxdeal_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_dealid order by t_instancedate desc) from dtxdeal_tmp where t_action = 2);
+            l_count := l_count + sql%rowcount;
+            
+            -- исключает вставки-изменения записи, если последней идет операция удаления по этому dealid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+            update dtxdeal_tmp s set t_replstate=2
+            where exists (select 1 from dtxdeal_tmp  where t_dealid=s.t_dealid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+            l_count := l_count + sql%rowcount; 
+            WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
+            commit;
         
-        -- исключает лишние операции обновления, оставляя толко последнюю из них по каждой dealid 
-        update dtxdeal_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_dealid order by t_instancedate desc) from dtxdeal_tmp where t_action = 2);
-        l_count := l_count + sql%rowcount;
+            -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
+            run_all_queries( 80 );
+        end if;
         
-        -- исключает вставки-изменения записи, если последней идет операция удаления по этому dealid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
-        update dtxdeal_tmp s set t_replstate=2
-        where exists (select 1 from dtxdeal_tmp  where t_dealid=s.t_dealid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
-        l_count := l_count + sql%rowcount; 
-        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
-        commit;
-        
-        
-        
-        -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
-        run_all_queries( 80 );
-        
-        
-        -- формирует записи в таблицы целевой системы (DDL_TICK_DBT, DDL_LEG_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
-        deals_create_records;
+        if p_stage is null  or  p_stage = 2   
+        then
+            -- формирует записи в таблицы целевой системы (DDL_TICK_DBT, DDL_LEG_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
+            deals_create_records;
+        end if;
 
         deb('Завершена процедура LOAD_DEALS_BY_PERIOD');
     end load_deals_by_period;
 
 
 
-    procedure load_demands_by_period(p_startdate date, p_enddate date default null)
+    procedure load_demands_by_period(p_startdate date, p_enddate date default null, p_stage number default null)
     is
         l_enddate date;
         l_count number := 0;
@@ -1323,6 +1357,12 @@ is
         deb('Запущена процедура LOAD_DEMANDS_BY_PERIOD');
         initialize;
                 
+        if p_stage not in (1,2) then
+            deb('Некорректное значение параметра p_stage. Завершение процедуры.');
+            WRITE_LOG_FINISH('Некорректное значение параметра p_stage', 90);
+            return;
+        end if;
+        
         l_enddate := nvl( p_enddate, p_startdate + 1 - 1/24/60/60); 
     
         -- Если SESSION_ID был не зназначен, то есть, LOAD_DEALS вызвали вручную, назначим его
@@ -1336,39 +1376,39 @@ is
         commit;
         --===========================================================================
     
-        -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
-        demands_create_snapshot(p_startdate, l_enddate);
+        if p_stage is null  or  p_stage = 1   
+        then
         
+            -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
+            demands_create_snapshot(p_startdate, l_enddate);
         
+            -- выполняем общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+            WRITE_LOG_START;
+            -- исключает дубли записей внутри одного дня
+            update dtxdemand_tmp set t_replstate=2 where rowid in 
+            (select lag(rowid) over(partition by t_demandid, t_instancedate order by null) from dtxdemand_tmp);
+            l_count := l_count + sql%rowcount;
+            
+            -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_demandid 
+            update dtxdemand_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_demandid order by t_instancedate desc) from dtxdemand_tmp where t_action = 2);
+            l_count := l_count + sql%rowcount;
+            
+            -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_demandid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+            update dtxdemand_tmp s set t_replstate=2
+            where exists (select 1 from dtxdemand_tmp  where t_demandid=s.t_demandid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+            l_count := l_count + sql%rowcount; 
+            WRITE_LOG_FINISH('Общая проверка записей', 90, p_count=>l_count);
+            commit;
         
-        -- выполняем общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
-        WRITE_LOG_START;
-        -- исключает дубли записей внутри одного дня
-        update dtxdemand_tmp set t_replstate=2 where rowid in 
-        (select lag(rowid) over(partition by t_demandid, t_instancedate order by null) from dtxdemand_tmp);
-        l_count := l_count + sql%rowcount;
+            -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
+            run_all_queries( 90 );
+        end if;
         
-        -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_demandid 
-        update dtxdemand_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_demandid order by t_instancedate desc) from dtxdemand_tmp where t_action = 2);
-        l_count := l_count + sql%rowcount;
-        
-        -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_demandid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
-        update dtxdemand_tmp s set t_replstate=2
-        where exists (select 1 from dtxdemand_tmp  where t_demandid=s.t_demandid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
-        l_count := l_count + sql%rowcount; 
-        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
-        commit;
-        
-        
-        
-        -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
-        run_all_queries( 90 );
-        
-        -- переносит ошбки в таблицу логов dtxloadlog_dbt
-        write_errors_into_log;
-        
-        -- формирует записи в таблицы целевой системы (DDL_RQ_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
-        demands_create_records;
+        if p_stage is null or p_stage = 2  
+        then
+            -- формирует записи в таблицы целевой системы (DDL_RQ_DBT, DNOTETEXT_DBT...) на основе таблицы снимка
+            demands_create_records;
+        end if;
 
         deb('Завершена процедура LOAD_DEMANDS_BY_PERIOD');
     end load_demands_by_period;
@@ -1377,13 +1417,19 @@ is
 
 
 
-    procedure load_courses_by_period(p_startdate date, p_enddate date default null)
+    procedure load_courses_by_period(p_startdate date, p_enddate date default null, p_stage number default null)
     is
         l_enddate date;
         l_count number := 0;
     begin
         deb('Запущена процедура LOAD_COURSES_BY_PERIOD');
         initialize;
+        
+        if p_stage not in (1,2) then
+            deb('Некорректное значение параметра p_stage. Завершение процедуры.');
+            WRITE_LOG_FINISH('Некорректное значение параметра p_stage', 70);
+            return;
+        end if;
                 
         l_enddate := nvl( p_enddate, p_startdate + 1 - 1/24/60/60); 
     
@@ -1397,40 +1443,39 @@ is
         values (g_SESSION_ID, 'LOAD_COURSES', p_startdate, sysdate) returning t_detailid into g_SESS_DETAIL_ID;
         commit;
         --============================================================================
-    
-        -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
-        courses_create_snapshot(p_startdate, l_enddate);
         
+        if p_stage is null  or  p_stage = 1   
+        then       
+            -- заполняет таблицу снимка (dtxdeal_tmp из dtxdeeal_dbt)
+            courses_create_snapshot(p_startdate, l_enddate);
         
+            -- выполняем общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+            WRITE_LOG_START;
+            -- исключает дубли записей внутри одного дня
+            update dtxcourse_tmp set t_replstate=2 where rowid in 
+            (select lag(rowid) over(partition by t_courseid, t_instancedate order by null) from dtxcourse_tmp);
+            l_count := l_count + sql%rowcount;
         
-        -- выполняем общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
-        WRITE_LOG_START;
-        -- исключает дубли записей внутри одного дня
-        update dtxcourse_tmp set t_replstate=2 where rowid in 
-        (select lag(rowid) over(partition by t_courseid, t_instancedate order by null) from dtxcourse_tmp);
-        l_count := l_count + sql%rowcount;
+            -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_courseid 
+            update dtxcourse_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_courseid order by t_instancedate desc) from dtxcourse_tmp where t_action = 2);
+            l_count := l_count + sql%rowcount;
         
-        -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_courseid 
-        update dtxcourse_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_courseid order by t_instancedate desc) from dtxcourse_tmp where t_action = 2);
-        l_count := l_count + sql%rowcount;
+            -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_courseid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+            update dtxcourse_tmp s set t_replstate=2
+            where exists (select 1 from dtxcourse_tmp  where t_courseid=s.t_courseid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+            l_count := l_count + sql%rowcount; 
+            WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
+            commit;
         
-        -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_courseid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
-        update dtxcourse_tmp s set t_replstate=2
-        where exists (select 1 from dtxcourse_tmp  where t_courseid=s.t_courseid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
-        l_count := l_count + sql%rowcount; 
-        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
-        commit;
+            -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
+            run_all_queries( 70 );
+        end if;
         
-        
-        
-        -- прогоняет сеты запросов по таблице снимка dtxdeal_tmp
-        run_all_queries( 70 );
-        
-        -- переносит ошибки в таблицу логов dtxloadlog_dbt
-        write_errors_into_log;
-        
-        -- формирует записи в таблицы целевой системы (DRATEDEF_DBT, DRATEHIST_DBT...) на основе таблицы снимка
-        courses_create_records;
+        if p_stage is null  or  p_stage = 2   
+        then   
+            -- формирует записи в таблицы целевой системы (DRATEDEF_DBT, DRATEHIST_DBT...) на основе таблицы снимка
+            courses_create_records;
+        end if;
 
         deb('Завершена процедура LOAD_COURSES_BY_PERIOD');
     end load_courses_by_period;
@@ -1438,13 +1483,19 @@ is
 
 
 
-    procedure load_comiss_by_period(p_startdate date, p_enddate date default null)
+    procedure load_comiss_by_period(p_startdate date, p_enddate date default null, p_stage number default null)
     is
         l_enddate date;
         l_count number := 0;
     begin
         deb('Запущена процедура LOAD_COMISS_BY_PERIOD');
         initialize;
+        
+        if p_stage not in (1,2) then
+            deb('Некорректное значение параметра p_stage. Завершение процедуры.');
+            WRITE_LOG_FINISH('Некорректное значение параметра p_stage', 100);
+            return;
+        end if;
                 
         l_enddate := nvl( p_enddate, p_startdate + 1 - 1/24/60/60); 
     
@@ -1459,38 +1510,38 @@ is
         commit;
         --=================================================================================
     
-        -- заполняет таблицу снимка (dtxcomiss_tmp из dtxcomiss_dbt)
-        comiss_create_snapshot(p_startdate, l_enddate);
+        if p_stage is null  or  p_stage = 1   
+        then   
+            -- заполняет таблицу снимка (dtxcomiss_tmp из dtxcomiss_dbt)
+            comiss_create_snapshot(p_startdate, l_enddate);
         
+            -- выполняет общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
+            WRITE_LOG_START;
+            -- исключает дубли записей внутри одного дня
+            update dtxcomiss_tmp set t_replstate=2 where rowid in 
+            (select lag(rowid) over(partition by t_comissid, t_instancedate order by null) from dtxcomiss_tmp);
+            l_count := l_count + sql%rowcount;
         
-        -- выполняет общие проверки. Посколько запросы из dtx_query_dbt не уполномочены менять t_replstate записей, придется делать это здесь
-        WRITE_LOG_START;
-        -- исключает дубли записей внутри одного дня
-        update dtxcomiss_tmp set t_replstate=2 where rowid in 
-        (select lag(rowid) over(partition by t_comissid, t_instancedate order by null) from dtxcomiss_tmp);
-        l_count := l_count + sql%rowcount;
+            -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_comissid 
+            update dtxcomiss_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_comissid order by t_instancedate desc) from dtxcomiss_tmp where t_action = 2);
+            l_count := l_count + sql%rowcount;
+            
+            -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_comissid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
+            update dtxcomiss_tmp s set t_replstate=2
+            where exists (select 1 from dtxcomiss_tmp  where t_comissid=s.t_comissid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
+            l_count := l_count + sql%rowcount; 
+            WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
+            commit;
         
-        -- исключает лишние операции обновления, оставляя только последнюю из них по каждому t_comissid 
-        update dtxcomiss_tmp set t_replstate=2 where rowid in (select lead(rowid) over(partition by t_comissid order by t_instancedate desc) from dtxcomiss_tmp where t_action = 2);
-        l_count := l_count + sql%rowcount;
+            -- прогоняет сеты запросов по таблице снимка dtxcomiss_tmp
+            run_all_queries( 100 );
+        end if;
         
-        -- исключает вставки-изменения записи, если последней идет операция удаления по этому t_comissid. Это важный момент, поскольку вставка в таблицы не завязана на последовательность записей 
-        update dtxcomiss_tmp s set t_replstate=2
-        where exists (select 1 from dtxcomiss_tmp  where t_comissid=s.t_comissid and rowid<>s.rowid and t_action=3 and t_instancedate>s.t_instancedate);
-        l_count := l_count + sql%rowcount; 
-        WRITE_LOG_FINISH('Общая проверка записей', 80, p_count=>l_count);
-        commit;
-        
-                
-        
-        -- прогоняет сеты запросов по таблице снимка dtxcomiss_tmp
-        run_all_queries( 100 );
-        
-        -- переносит ошибки в таблицу логов dtxloadlog_dbt
-        write_errors_into_log;
-        
-        -- формирует записи в таблицы целевой системы на основе таблицы снимка
-        comiss_create_records;
+        if p_stage is null  or  p_stage = 2   
+        then   
+            -- формирует записи в таблицы целевой системы на основе таблицы снимка
+            comiss_create_records;
+        end if;
 
         deb('Завершена процедура LOAD_COMISS_BY_PERIOD');
     end load_comiss_by_period;
