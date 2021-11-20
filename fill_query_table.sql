@@ -596,7 +596,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 3, 110, 'update dtxdemand_tmp set TGT_STATE=0, TGT_PLANDATE=T_DATE, TGT_FACTDATE=date''0001-01-01'', TGT_CHANGEDATE=T_DATE where t_isfact<>chr(88)', 1, 
+   (90, 3, 110, 'update dtxdemand_tmp set TGT_STATE=0, TGT_PLANDATE=T_DATE, TGT_FACTDATE=date''0001-01-01'', TGT_CHANGEDATE=T_DATE where t_isfact is null', 1, 
     'Обогащение записи - добавление TGT_STATE / TGT_PLANDATE / TGT_FACTDATE / TGT_CHANGEDATE для плановых платежей', 'Добавление TGT_STATE / TGT_PLANDATE / TGT_FACTDATE / TGT_CHANGEDATE - 2', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -626,6 +626,96 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select * from (select :1, :2, :3, :4, 70, sysdate, t_comissid, 900 from dtxcomiss_tmp sou group by t_comissid, t_instancedate having count(*)>1)', 2, 
-    'Проверяем записи на предмет дублирования id внутри t_instancedate, поскольку по ограничениям реализации объект может присутствовать только 1 раз в день', 'Проверка на дублирование id внутри дня', 'X', 'X');
+   (100, 1, 10, 'update /*+ # */ DTXCOMISS_TMP set T_DEALID=nvl(T_DEALID,0), T_TYPE=nvl(T_TYPE,0), T_SUM=nvl(T_SUM,0), T_NDS=nvl(T_NDS,0), T_CURRENCYID=nvl(T_CURRENCYID,-1)', 1, 
+    'Форматирование записи - преобразование NVL', 'Форматирование записи - NVL по полям', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 701 from dtxcomiss_tmp where t_dealid = 0', 1, 
+    'Ошибка: сделка под комиссией не задана', 'Проверка T_DEALID', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 703 from dtxcomiss_tmp where t_currencyid = -1', 1, 
+    'Ошибка: валюта комиссиии не задана', 'Проверка T_CURRENCYID', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 709 from dtxcomiss_tmp where t_sum = 0', 1, 
+    'Ошибка: не задана сумма комиссии', 'Проверка T_SUM - суммы комиссии', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 10, 'update /*+ # */ DTXCOMISS_TMP set TGT_COMISSID=ddlcomis_dbt_seq.nextval where t_action=1 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_COMISSID (ID комиссии). Для вставок, из последовательности ddlcomis_dbt_seq', 'Добавление TGT_COMISSID (для изменений/удалений)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 20, 'merge /*+ # */ into (select * from dtxcomiss_tmp) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=100 and t_objstate=0) sou on (sou.t_objectid=tgt.T_COMISSID)'||CHR(10)||'when matched then update set tgt.TGT_COMISSID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_COMISSID (ID комиссии). Для изменений/удалений, из DTXREPLOBJ_DBT', 'Добавление TGT_COMISSID (для изменений/удалений)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 30, 'merge /*+ # */ into (select * from dtxcomiss_tmp) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=80 and t_objstate=0) sou on (sou.t_objectid=tgt.T_DEALID)'||CHR(10)||'when matched then update set tgt.TGT_DEALID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_DEALID (ID сделки)', 'Добавление TGT_DEALID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 40, 'merge /*+ # */ into (select * from dtxcomiss_tmp) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=10 and t_objstate=0) sou on (sou.t_objectid=tgt.T_CURRENCYID)'||CHR(10)||'when matched then update set tgt.TGT_CURRENCYID=sou.T_DESTID', 1, 
+    'Обогащение записи - добавление TGT_CURRENCYID (ID валюты комиссии)', 'Добавление TGT_CURRENCYID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 50, 'update /*+ # */ DTXCOMISS_TMP set TGT_COMMNUMBER = (100 + TGT_CURRENCYID)*10 + T_TYPE', 1, 
+    'Обогащение записи - добавление TGT_COMMNUMBER (вид комиссии)', 'Добавление TGT_COMMNUMBER (вид комиссии)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 60, 'update /*+ # */ DTXCOMISS_TMP set TGT_NDS = CASE WHEN t_type in (3,9) THEN  T_SUM-round(T_SUM/118*100, 2) ELSE 0 END', 1, 
+    'Обогащение записи - добавление TGT_NDS ', 'Добавление TGT_NDS (отключено)', NULL, NULL);
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 70, 'update /*+ # */ DTXCOMISS_TMP set TGT_CONTRACTID = GetFictContract when GetFictContract > 0', 1, 
+    'Обогащение записи - добавление TGT_CONTRACTID из заголовка пакета ', 'Добавление TGT_CONTRACTID (1 часть, фиктивный получатель)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 702 from dtxcomiss_tmp where TGT_DEALID is null', 1, 
+    'Ошибка: не найдена реплицированная сделка под комиссией', 'Проверка TGT_DEALID', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 4, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 704 from dtxcomiss_tmp where TGT_CURRENCYID is null', 1, 
+    'Ошибка: не найдена реплицированная валюта комиссии', 'Проверка TGT_CURRENCYID', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 4, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 706 from dtxcomiss_tmp where TGT_COMISSID is null and t_action in (2,3)', 1, 
+    'Ошибка: изменяемая/удаляемая комиссия по сделке не существует. Проверка по DTXREPLOBJ_DBT', 'Проверка TGT_COMISSID (для изменений/удалений) - 1', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 4, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_comissid, 706 from (select * from dtxcomiss_tmp where t_replstate=0 and t_action in (2,3)) s '||CHR(10)||'LEFT JOIN ddlcomis_dbt t on (s.tgt_comissid=t.t_id)'||CHR(10)||'where t.t_id is null'||CHR(10)||'', 1, 
+    'Ошибка: изменяемая/удаляемая комиссия по сделке не существует. Проверка по DDLCOMIS_DBT', 'Проверка TGT_COMISSID (для изменений/удалений) - 2', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 4, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 707 from dtxcomiss_tmp where TGT_COMISSID is not null and t_action = 1', 1, 
+    'Ошибка: добавляемая комиссия уже есть в системе', 'Проверка TGT_COMISSID (для вставок)', 'X', 'X');
 COMMIT;

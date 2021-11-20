@@ -7,6 +7,7 @@ is
     g_ourbank constant number := 12;        -- Код нашего банка. Проверить
     g_department  constant number := 1;     -- Департамент по умолчанию. См. ddp_dep_dbt
     g_is_initialized  boolean := false;
+    g_fictive_comiss_contract number := null;   -- фиктивный контракт комиссии ( dsfcontr_dbt.t_id )
     
     g_use_needdemand constant boolean := true;  -- Использовать NEEDDEMAND в сделках. Поскольку многие банки не используют его в принципе, нет смысла прогонять каждый раз запросы
     
@@ -51,7 +52,8 @@ is
     function GetIsQuoted(p_fi number, p_date date) return char DETERMINISTIC PARALLEL_ENABLE;
     function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC PARALLEL_ENABLE;
     function GetRateType( p_tp number ) return number DETERMINISTIC PARALLEL_ENABLE;    
-    
+    function GetFictContract return number DETERMINISTIC PARALLEL_ENABLE;
+
     -- стартовые функции
     -- p_startdate определяет начальную дату репликации
     -- p_enddate определяет конечную дату репликации. Записи будут реплицированы по эу дату включительнно. Если не задано, она принимается равной (p_startdate + 1 день - 1 секунда)
