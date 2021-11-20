@@ -144,6 +144,9 @@ is
             WRITE_LOG_FINISH('Удаление старых платежей', 80);        
             commit;
             
+            -- ============================================================================
+            -- === Обработка NEEDDEMAND (обычные операции и 1-я часть по сделкам РЕПО) ====
+            
             -- платеж по первой части по бумагам, плановый
             insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
             select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 1 /*T_DEALPART*/, 
@@ -202,7 +205,79 @@ is
             l_count := l_count + sql%rowcount;
             commit;    
             
-            WRITE_LOG_FINISH('Заполнение DDLRQ_DBT (t_action 1,2)', 80, p_count=>l_count);
+            WRITE_LOG_FINISH('Заполнение DDLRQ_DBT, 1 часть (t_action 1,2)', 80, p_count=>l_count);
+            
+            
+            
+            
+            -- ============================================================================
+            -- ============ Обработка NEEDDEMAND2 (2-я часть по сделкам РЕПО) =============
+            
+            l_count := 0;
+            -- платеж по второй части по бумагам, плановый
+            insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 2 /*T_DEALPART*/, 
+            case when t_kind in (10,30,60) then 0 /*требование*/ else 1/*обязательство*/ end /*T_KIND*/, 
+            1 /*T_SUBKIND, бумаги*/, 8 /*TGT_TYPE, поставка бумаг*/, 0 /*T_NUM*/,
+            T_AMOUNT /*T_AMOUNT*/, TGT_AVOIRISSID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
+            0 /*tgt_state*/, 
+            case when tgt_maturityisprincipal2=chr(88) then tgt_maturity2 else tgt_expiry2 end /*T_PLANDATE*/, 
+            date'0001-01-01', CHR(0), CHR(0)/*T_NETTING*/, null, 0, 
+            case when tgt_maturityisprincipal2=chr(88) then tgt_maturity2 else tgt_expiry2 end /*TGT_CHANGEDATE*/,
+            0 /*T_ACTION*/, 0, 85, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
+            from dtxdeal_tmp where t_replstate=0 and t_needdemand2='X' and t_kind not in (80,90,110) and t_action in (1,2) and TGT_ISREPO=chr(88);
+            l_count := l_count + sql%rowcount;
+            commit;
+            
+            -- платеж по второй части по бумагам, фактический
+            insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 2 /*T_DEALPART*/, 
+            case when t_kind in (10,30,60) then 0 /*требование*/ else 1/*обязательство*/ end /*T_KIND*/, 
+            1 /*T_SUBKIND, бумаги*/, 8 /*TGT_TYPE, поставка бумаг*/, 2 /*T_NUM*/,
+            T_AMOUNT /*T_AMOUNT*/, TGT_AVOIRISSID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
+            2 /*tgt_state*/,  date'0001-01-01',
+            case when tgt_maturityisprincipal2=chr(88) then tgt_maturity2 else tgt_expiry2 end /*T_PLANDATE*/, 
+             CHR(0), CHR(0)/*T_NETTING*/, null, 0, date'0001-01-01' /*TGT_CHANGEDATE*/,
+            0 /*T_ACTION*/, 0, 86, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
+            from dtxdeal_tmp where t_replstate=0 and t_needdemand2='X' and t_kind not in (80,90,110) and t_action in (1,2) and TGT_ISREPO=chr(88);
+            l_count := l_count + sql%rowcount;
+            commit;
+            
+            -- платеж по второй части по деньгам, плановый
+            insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 2 /*T_DEALPART*/, 
+            case when t_kind in (10,30,60) then 1/*обязательство*/ else 0 /*требование*/ end /*T_KIND*/, 
+            0 /*T_SUBKIND, деньги*/, 2 /*TGT_TYPE, оплата*/, 0 /*T_NUM*/,
+            T_TOTALCOST2 /*T_AMOUNT*/, TGT_CURRENCYID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
+            0 /*tgt_state*/, 
+            case when tgt_maturityisprincipal2=chr(88) then tgt_expiry2 else tgt_maturity2 end /*T_PLANDATE*/, 
+            date'0001-01-01', CHR(0), CHR(0)/*T_NETTING*/, null, 0, 
+            case when tgt_maturityisprincipal2=chr(88) then tgt_expiry2 else tgt_maturity2 end /*TGT_CHANGEDATE*/,
+            0 /*T_ACTION*/, 0, 87, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
+            from dtxdeal_tmp where t_replstate=0 and t_needdemand2='X' and t_action in (1,2) and TGT_ISREPO=chr(88);            
+            l_count := l_count + sql%rowcount;
+            commit;
+
+            -- платеж по второй части по деньгам, фактический
+            insert /*+parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
+            select ddlrq_dbt_seq.nextval, TGT_OBJTYPE /*T_DOCKIND*/, TGT_DEALID, 2 /*T_DEALPART*/, 
+            case when t_kind in (10,30,60) then 1/*обязательство*/ else 0 /*требование*/ end /*T_KIND*/, 
+            0 /*T_SUBKIND, деньги*/, 2 /*TGT_TYPE, оплата*/, 2 /*T_NUM*/,
+            T_TOTALCOST2 /*T_AMOUNT*/, TGT_CURRENCYID, nvl(TGT_MARKETID,TGT_PARTYID), -1, -1/*T_PLACEID*/, 
+            2 /*tgt_state*/, date'0001-01-01' /*T_PLANDATE*/, 
+            case when tgt_maturityisprincipal2=chr(88) then tgt_expiry2 else tgt_maturity2 end /*T_FACTDATE*/, 
+            CHR(0), CHR(0)/*T_NETTING*/, null, 0, date'0001-01-01' /*TGT_CHANGEDATE*/,
+            0 /*T_ACTION*/, 0, 88, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
+            from dtxdeal_tmp where t_replstate=0 and t_needdemand2='X' and t_action in (1,2) and TGT_ISREPO=chr(88);        
+            l_count := l_count + sql%rowcount;
+            commit;    
+            
+            WRITE_LOG_FINISH('Заполнение DDLRQ_DBT, 2 часть (t_action 1,2)', 80, p_count=>l_count);
+            
+            
+            
+            
+            
             
             insert /*+parallel(4)*/into dtxreplobj_dbt(T_OBJECTTYPE, T_OBJECTID, T_SUBOBJNUM, T_DESTID, T_DESTSUBOBJNUM, T_OBJSTATE)
             select 90, tgt_dealid, p.t_id_step, p.t_id, 1, 0
