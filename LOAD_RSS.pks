@@ -11,7 +11,7 @@ is
     
     g_use_needdemand constant boolean := true;  -- Использовать NEEDDEMAND в сделках. Поскольку многие банки не используют его в принципе, нет смысла прогонять каждый раз запросы
     
-    c_DEFAULT_FICTFI  constant number := 2192;  -- Фиктивный FIID для сделки с корзиной, по умолчанию.
+    c_DEFAULT_FICTFI  number := 2192;  -- Фиктивный FIID для сделки с корзиной, по умолчанию.
         
     -- константы типов
     c_OBJTYPE_MONEY     constant number  := 10;
@@ -53,6 +53,7 @@ is
     function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC PARALLEL_ENABLE;
     function GetRateType( p_tp number ) return number DETERMINISTIC PARALLEL_ENABLE;    
     function GetFictContract return number DETERMINISTIC PARALLEL_ENABLE;
+    function GetBasketFI return number DETERMINISTIC PARALLEL_ENABLE;  -- возвращает код фиктивной бумаги для сделки РЕПО с корзиной
 
     -- стартовые функции
     -- p_startdate определяет начальную дату репликации

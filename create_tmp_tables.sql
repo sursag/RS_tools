@@ -122,7 +122,15 @@ CREATE TABLE DTXDEAL_TMP
   TGT_ISBOND                CHAR(1 CHAR),
   TGT_ISQUOTED              CHAR(1 CHAR),
   TGT_ISKSU                 CHAR(1 CHAR),
-  TGT_ISFICTIVE             CHAR(1 CHAR)
+  TGT_BS_ISFICTIVE          CHAR(1 CHAR),
+  TGT_BS_DIRECTION          NUMBER(1),
+  TGT_BS_AMOUNT             NUMBER,
+  TGT_BS_AMOUNT_AFTER       NUMBER,
+  TGT_BS_RETDATE            DATE,
+  TGT_BS_RQTYPE             NUMBER(1),
+  TGT_BS_BEGDATE            DATE,
+  TGT_BS_PAYER              NUMBER,
+  TGT_BS_DEALKIND           NUMBER
 )
 LOGGING 
 MONITORING;
@@ -155,8 +163,23 @@ COMMENT ON COLUMN DTXDEAL_TMP.TGT_ISBOND IS 'Бумага является облигацией';
 
 COMMENT ON COLUMN DTXDEAL_TMP.TGT_ISQUOTED IS 'Признак котируемой бумаги';
 
-COMMENT ON COLUMN DTXDEAL_TMP.TGT_ISFICTIVE IS 'Фиктивная операция - отражает движение обеспечения в сделке с корзиной';
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_ISFICTIVE IS 'Фиктивная операция - отражает движение обеспечения в сделке с корзиной';
 
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_DIRECTION IS 'Для движений по корзине:  направлеение движения обеспечения (0-ввод обеспечения, 1-вывод)';
+
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_AMOUNT IS 'Для движений по корзине:  количество бумаг в обеспечении до этой операции';
+
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_AMOUNT_AFTER IS 'Для движений по корзине: количество бумаг в обеспечении после обработки сделки';
+
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_RETDATE IS 'Для движений по корзине: дата окончательного возврата бумаг';
+
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_RQTYPE IS 'Для движений по корзине: тип платежа в ddlrq_dbt';
+
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_BEGDATE IS 'Для движений по корзине: дата начальной поставки бумаг';
+
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_PAYER IS 'Для движений по корзине: плательщик по плитежу в ddlrq_dbt';
+
+COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_DEALKIND IS 'Для движений по корзине: вид базовой сделки';
 
 
 

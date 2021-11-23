@@ -14,37 +14,37 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 303 from dtxcourse_tmp where t_type=0 and t_action in (1,2)', 1, 
+   (70, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 303 from dtxcourse_tmp where t_type=0 and t_action in (1,2)', 1, 
     'Ошибка: для курса не задан вид', 'Проверка вида курса', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 304 from dtxcourse_tmp where t_rate=0 and t_action in (1,2)', 1, 
+   (70, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 304 from dtxcourse_tmp where t_rate=0 and t_action in (1,2)', 1, 
     'Ошибка: для курса не задано значение', 'Проверка значения курса', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 301 from dtxcourse_tmp where T_MARKETID=0 and t_action in (1,2)', 1, 
+   (70, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 301 from dtxcourse_tmp where T_MARKETID=0 and t_action in (1,2)', 1, 
     'Ошибка: для курса не задана торговая площадка', 'Проверка торговой площадки курса', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 2, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 305 from dtxcourse_tmp where T_BASEFIID=0 and t_action in (1,2)', 1, 
+   (70, 2, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 305 from dtxcourse_tmp where T_BASEFIID=0 and t_action in (1,2)', 1, 
     'Ошибка: для курса не задан базовый финансовый инструмент', 'Проверка базового финансового инструмента', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 2, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 310 from dtxcourse_tmp where T_BASEFIID=0 and t_action in (1,2)', 1, 
+   (70, 2, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 310 from dtxcourse_tmp where T_BASEFIID=0 and t_action in (1,2)', 1, 
     'Ошибка: для курса не задан котируемый финансовый инструмент', 'Проверка котируемого финансового инструмента', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 2, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select * from (select :1, :2, :3, :4, 70, sysdate, t_courseid, 900 from dtxcourse_tmp sou group by t_courseid, t_instancedate having count(*)>1)', 2, 
+   (70, 2, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select * from (select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 900 from dtxcourse_tmp sou group by t_courseid, t_instancedate having count(*)>1)', 2, 
     'Проверяем записи на предмет дулирования id внутри t_instancedate, поскольку по ограничениям реализации объект может присутствовать только 1 раз в день', 'Проверка на дублирование id внутри дня', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -152,43 +152,43 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 302 from dtxcourse_tmp where TGT_MARKETID is null', 1, 
+   (70, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 302 from dtxcourse_tmp where TGT_MARKETID is null', 1, 
     'Ошибка: торговая площадка не найдена в replobj_dbt', 'Проверка торговой площадки в RSS', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 4, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 306 from dtxcourse_tmp where TGT_BASEFIID is null', 1, 
+   (70, 4, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 306 from dtxcourse_tmp where TGT_BASEFIID is null', 1, 
     'Ошибка: базовый финансоввый инструмент не найден в replobj_dbt', 'Проверка базового финиинструмента в RSS', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 4, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 311 from dtxcourse_tmp where TGT_FIID is null', 1, 
+   (70, 4, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 311 from dtxcourse_tmp where TGT_FIID is null', 1, 
     'Ошибка: котируемый финансоввый инструмент не найден в replobj_dbt', 'Проверка котируемого финиинструмента в RSS', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 4, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 321 from dtxcourse_tmp where TGT_RATEID is null and t_action=2', 1, 
+   (70, 4, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 321 from dtxcourse_tmp where TGT_RATEID is null and t_action=2', 1, 
     'Ошибка: курс не найден в целевой системе', 'Проверка наличия курса в RSS для обновлений', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 4, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 322 from dtxcourse_tmp where TGT_RATEID is null and t_action=3', 1, 
+   (70, 4, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 322 from dtxcourse_tmp where TGT_RATEID is null and t_action=3', 1, 
     'Ошибка: курс не найден в целевой системе (для удалений)', 'Проверка наличия курса в RSS для удалений', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 4, 70, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 340 from dtxcourse_tmp sou left join dratehist_dbt h '||CHR(13)||CHR(10)||'on (sou.tgt_rateid=h.t_rateid and sou.t_ratedate=h.t_sincedate)'||CHR(13)||CHR(10)||'where (h.T_RATEID is null and nvl(sou.TGT_LAST_DATE_RSS,date''0001-01-01'')<>t_ratedate and t_action in (2,3))', 1, 
+   (70, 4, 70, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 340 from dtxcourse_tmp sou left join dratehist_dbt h '||CHR(13)||CHR(10)||'on (sou.tgt_rateid=h.t_rateid and sou.t_ratedate=h.t_sincedate)'||CHR(13)||CHR(10)||'where (h.T_RATEID is null and nvl(sou.TGT_LAST_DATE_RSS,date''0001-01-01'')<>t_ratedate and t_action in (2,3))', 1, 
     'Для изменений/удалений проверяем, есть ли такой курс за такую дату в DRATEHIST_DBT или в DRATEDEF_DBT(откуда он уже перешел в TGT_LAST_DATE_RSS) ', 'Проверка наличия значения курса в RSS для изменений/удалений', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 4, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 70, sysdate, t_courseid, 340 from dtxcourse_tmp sou left join dratehist_dbt h on (sou.tgt_rateid=h.t_rateid and sou.t_ratedate=h.t_sincedate)'||CHR(10)||'where (h.T_RATEID > 0 or sou.TGT_LAST_DATE_RSS=t_ratedate and t_action = 1)', 1, 
+   (70, 4, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_courseid, 340 from dtxcourse_tmp sou left join dratehist_dbt h on (sou.tgt_rateid=h.t_rateid and sou.t_ratedate=h.t_sincedate)'||CHR(10)||'where (h.T_RATEID > 0 or sou.TGT_LAST_DATE_RSS=t_ratedate and t_action = 1)', 1, 
     'Для вставок проверяем, есть ли уже такой курс за такую дату в DRATEHIST_DBT или в DRATEDEF_DBT(откуда он уже перешел в TGT_LAST_DATE_RSS) ', 'Проверка наличия значения курса в RSS для вставок (action=1)', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -212,62 +212,68 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, 80, sysdate, dtxdeal_tmp.t_dealid, '||CHR(13)||CHR(10)||'case    when ro.t_objstate=2 then 423 -- сделка уже удалена в целевой системе'||CHR(13)||CHR(10)||'    when tick.t_dealid is null then 422 -- нет тикета сделки'||CHR(13)||CHR(10)||'    when leg.t_dealid is null then 422 -- нет ценовых условий сделки'||CHR(13)||CHR(10)||'    when ro.t_destid is null  then 422 -- сделка с таким dealid не реплицировалась'||CHR(13)||CHR(10)||'end T_ERRORCODE '||CHR(13)||CHR(10)||'from dtxdeal_tmp left join dtxreplobj_dbt ro  on (ro.t_objecttype=80 and dtxdeal_tmp.t_dealid=ro.t_objectid)'||CHR(13)||CHR(10)||'left join ddl_tick_dbt tick on (ro.t_destid = tick.t_dealid) '||CHR(13)||CHR(10)||'left join ddl_leg_dbt leg on (ro.t_destid = leg.t_dealid and leg.t_legkind=0)'||CHR(13)||CHR(10)||'where dtxdeal_tmp.t_action in (2,3) and (ro.t_destid is null or tick.t_dealid is null or leg.t_dealid is null)'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, t_instancedate, 80, sysdate, dtxdeal_tmp.t_dealid, '||CHR(13)||CHR(10)||'case    when ro.t_objstate=2 then 423 -- сделка уже удалена в целевой системе'||CHR(13)||CHR(10)||'    when tick.t_dealid is null then 422 -- нет тикета сделки'||CHR(13)||CHR(10)||'    when leg.t_dealid is null then 422 -- нет ценовых условий сделки'||CHR(13)||CHR(10)||'    when ro.t_destid is null  then 422 -- сделка с таким dealid не реплицировалась'||CHR(13)||CHR(10)||'end T_ERRORCODE '||CHR(13)||CHR(10)||'from dtxdeal_tmp left join dtxreplobj_dbt ro  on (ro.t_objecttype=80 and dtxdeal_tmp.t_dealid=ro.t_objectid)'||CHR(13)||CHR(10)||'left join ddl_tick_dbt tick on (ro.t_destid = tick.t_dealid) '||CHR(13)||CHR(10)||'left join ddl_leg_dbt leg on (ro.t_destid = leg.t_dealid and leg.t_legkind=0)'||CHR(13)||CHR(10)||'where dtxdeal_tmp.t_action in (2,3) and dtxdeal_tmp.t_parentid>0 and (ro.t_destid is null or tick.t_dealid is null or leg.t_dealid is null)'||CHR(13)||CHR(10)||'', 1, 
     'Запрос выполняется только для операций обновления/удаления. Проверяет, есть ли в целевой системе реплицированные сделки с данным ID. Обрабатывает сразу несколько событий - отсутствие сделки в тикетах, в leg, отсутствие в replobj и ручной режим обработки. Может, потом разобью на несколько запросов', 'Проверка наличия сделки в RS', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 20, 'insert /*+ parallel(4) */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 80, sysdate,  d.t_dealid, 421 from dtxdeal_dbt dp join dtxdeal_tmp d on (d.t_code=dp.t_code and d.t_dealid > dp.t_dealid )'||CHR(13)||CHR(10)||'where d.t_replstate=0 and d.t_action=1'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 20, 'insert /*+ parallel(4) */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, d.t_instancedate, 80, sysdate,  d.t_dealid, 421 from dtxdeal_dbt dp join dtxdeal_tmp d on (d.t_code=dp.t_code and d.t_dealid > dp.t_dealid )'||CHR(13)||CHR(10)||'where d.t_replstate=0 and d.t_action=1'||CHR(13)||CHR(10)||'', 1, 
     'Запрос выполняется только для операций вставки. Проверяет дубли сделок по T_DEALCODE.', 'Проверка дублей по DEALCODE', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 80, sysdate, d.t_dealid, 206 from dtxdeal_tmp d join dtxreplobj_dbt ro on (ro.t_objecttype=80 and ro.t_objectid=d.t_dealid and ro.t_objstate=1)'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 80, sysdate, d.t_dealid, 206 from dtxdeal_tmp d join dtxreplobj_dbt ro on (ro.t_objecttype=80 and ro.t_objectid=d.t_dealid and ro.t_objstate=1)'||CHR(13)||CHR(10)||'', 1, 
     'Объект находится в режиме ручного редактирования.', 'Проверка на ручное редактирование', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, 80, sysdate, t_dealid, 539 from dtxdeal_tmp where t_code is null'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, t_instancedate, 80, sysdate, t_dealid, 539 from dtxdeal_tmp where t_code is null'||CHR(13)||CHR(10)||'', 1, 
     'Не задан параметр T_CODE - код сделки', 'Проверка заполнения T_CODE', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, 80, sysdate,  t_dealid, 568 from dtxdeal_tmp where t_kind = 0'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, t_instancedate, 80, sysdate,  t_dealid, 568 from dtxdeal_tmp where t_kind = 0'||CHR(13)||CHR(10)||'', 1, 
     'Не задан параметр T_KIND - код сделки', 'Проверка заполнения T_KIND', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, 80, sysdate, t_dealid, 568 from dtxdeal_tmp where t_amount = 0'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, t_instancedate, 80, sysdate, t_dealid, 568 from dtxdeal_tmp where t_amount = 0'||CHR(13)||CHR(10)||'', 1, 
     'Не задан параметр T_AMOUNT - количество ценных бумаг', 'Проверка заполнения T_AMOUNT', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 70, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, 80, sysdate,  t_dealid, 556 from dtxdeal_tmp where T_PRICE = 0 and T_KIND not in (70,80,90,100,110)'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 70, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, t_instancedate, 80, sysdate,  t_dealid, 556 from dtxdeal_tmp where T_PRICE = 0 and T_KIND not in (70,80,90,100,110)'||CHR(13)||CHR(10)||'', 1, 
     'Не задан параметр T_PRICE - цена за шт. ценной бумаги, не включая НКД', 'Проверка заполнения T_PRICE', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, 80, sysdate,  t_dealid, 557 from dtxdeal_tmp where T_COST = 0'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, t_instancedate, 80, sysdate,  t_dealid, 557 from dtxdeal_tmp where T_COST = 0'||CHR(13)||CHR(10)||'', 1, 
     'Не задан параметр T_COST - стоимость ценных бумаг без НКД', 'Проверка заполнения T_COST', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 90, 'insert /*+ append */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 80, sysdate, t_dealid, 558 from dtxdeal_tmp where T_TOTALCOST = 0 and t_action in (1,2)'||CHR(13)||CHR(10)||'', 1, 
+   (80, 2, 90, 'insert /*+ append */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 80, sysdate, t_dealid, 558 from dtxdeal_tmp where T_TOTALCOST = 0 and t_action in (1,2)'||CHR(13)||CHR(10)||'', 1, 
     'Не задан параметр T_TOTALCOST - общая сумма сделки вкл. НКД в валюте сделки', 'Проверка заполнения T_TOTALCOST', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 2, 100, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select * from (select :1, :2, :3, :4, 70, sysdate, t_dealid, 900 from dtxdeal_tmp sou group by t_dealid, t_instancedate having count(*)>1)', 2, 
+   (80, 2, 100, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select * from (select :1, :2, :3, :4, t_instancedate, 80, sysdate, t_dealid, 900 from dtxdeal_tmp sou group by t_dealid, t_instancedate having count(*)>1)', 2, 
     'Проверяем записи на предмет дублирования id внутри t_instancedate, поскольку по ограничениям реализации объект может присутствовать только 1 раз в день', 'Проверка на дублирование id внутри дня', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 2, 110, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 80, sysdate, t_dealid, 597 from dtxdeal_tmp sou where t_parentid>0 and t_kind not in (10,20)', 1, 
+    'Проверяем фиктивные сделки по двжению обеспечения для РЕПО с корзиной. Они могут иметь только 2 типа:  20(ввод обеспечения) или 10(вывод обеспечения)', 'Проверка на корректность типа движения по корзине', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
@@ -302,7 +308,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 3, 60, 'update /*+parallel(4)*/ dtxdeal_tmp set tgt_avoirissid = 2192, '||CHR(13)||CHR(10)||'TGT_isbasket=chr(88),'||CHR(13)||CHR(10)||'T_PAYDATE = T_SUPLDATE,'||CHR(13)||CHR(10)||'T_SUPLDATE = T_PAYDATE'||CHR(13)||CHR(10)||'where t_replstate=0 and t_avoirissid=-20', 1, 
+   (80, 3, 60, 'update /*+parallel(4)*/ dtxdeal_tmp set '||CHR(13)||CHR(10)||'TGT_AVOIRISSID = Load_RSS.GetBasketFI,'||CHR(13)||CHR(10)||'TGT_DEALKIND = 2139, '||CHR(13)||CHR(10)||'TGT_ISBASKET=chr(88),'||CHR(13)||CHR(10)||'T_PAYDATE = T_SUPLDATE,'||CHR(13)||CHR(10)||'T_SUPLDATE = T_PAYDATE'||CHR(13)||CHR(10)||'where t_replstate=0 and t_avoirissid=-20', 1, 
     'Обогащение записи - добавление TGT_AVOIRISSID для корзины', 'Добавление TGT_AVOIRISSID (2192) для корзины', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -458,8 +464,8 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 3, 330, 'update /*+ parallel(4) */ DTXDEAL_TMP set'||CHR(13)||CHR(10)||'TGT_DEALKIND = Load_RSS.GetDealKind(T_KIND, TGT_MARKETID, TGT_AVOIRISSID, TGT_ISBASKET, TGT_ISKSU) '||CHR(13)||CHR(10)||'    ', 1, 
-    'Обогащение записи - добавление TGT_DEALKIND - вид сделки', 'Добавление TGT_DEALKIND', NULL, 'X');
+   (80, 3, 330, 'update /*+ parallel(4) */ DTXDEAL_TMP set'||CHR(13)||CHR(10)||'TGT_DEALKIND = Load_RSS.GetDealKind(T_KIND, TGT_MARKETID, TGT_AVOIRISSID, TGT_ISBASKET, TGT_ISKSU) '||CHR(13)||CHR(10)||'where TGT_DEALKIND is null and t_replstate=0'||CHR(13)||CHR(10)||'    ', 1, 
+    'Обогащение записи - добавление TGT_DEALKIND - вид сделки. Для базовой сделки РЕПО с корзиной он был определен раньше.', 'Добавление TGT_DEALKIND', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
@@ -470,67 +476,133 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (80, 3, 350, 'update /*+parallel(4)*/ dtxdeal_tmp set TGT_DEALID = ddl_tick_dbt_seq.nextval where t_replstate=0 and t_action=1', 1, 
-    'Обогащение записи - добавление TGT_DEALID из последовательности для вставок', 'Добавление TGT_DEALID для вставок', NULL, 'X');
+   (80, 3, 350, 'update /*+parallel(4)*/ dtxdeal_tmp set TGT_DEALID = ddl_tick_dbt_seq.nextval where t_replstate=0 and t_action=1 and t_parentid is null', 1, 
+    'Обогащение записи - добавление TGT_DEALID из последовательности для вставок (не для фиктивных сделок по РЕПО с корзиной, там используется другая последовательность)', 'Добавление TGT_DEALID для вставок', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 601 from dtxdemand_tmp where t_dealid is null', 1, 
+   (80, 3, 360, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0 and t_parentid>0) tgt '||CHR(10)||'using (SELECT t_dealid, t_fiid, sum(t_principal * (CASE t_kind WHEN 0 THEN 1 WHEN 1 THEN -1 END)) cou FROM DDL_TICK_ENS_DBT group by t_dealid, t_fiid ) sou '||CHR(10)||'on (sou.t_dealid=tgt.TGT_PARENTID and sou.T_FIID = TGT.TGT_AVOIRISSID)'||CHR(10)||'when matched then update set tgt.TGT_BS_AMOUNT=sou.cou', 1, 
+    'Обогащение записи для РЕПО с корзиной - добавление TGT_BS_ANOUNT - объхем обеспечения на момент прихода движения по данной бумаге', 'Добавление TGT_BS_ANOUNT (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 380, 'update /*+ # */ DTXDEAL_TMP set TGT_DEALID = ddl_tick_ens_dbt_seq.nextval where t_parentid > 0 and t_action=1 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_DEALID для РЕПО с корзиной из последовательности. Это будущий ID в таблице ddl_tick_ens_dbt', 'Добавление TGT_DEALID (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 400, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0 and t_parentid>0) tgt '||CHR(10)||'using (select t_dealid, coalesce( nullif(t_maturity, date''0001-01-01''), nullif(t_expiry, date''0001-01-01'')) retdate from ddl_leg_dbt where t_legkind=2) sou '||CHR(10)||'on (sou.t_dealid=tgt.TGT_PARENTID)'||CHR(10)||'when matched then update set tgt.TGT_BS_RETDATE=sou.retdate', 1, 
+    'Обогащение записи для РЕПО с корзиной - добавление TGT_BS_RETDATE - дата возврата обеспечения', 'Добавление TGT_BS_RETDATE (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 410, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0 and t_parentid>0) tgt '||CHR(10)||'using (select t_dealid, coalesce( nullif(t_maturity, date''0001-01-01''), nullif(t_expiry, date''0001-01-01'')) begdate from ddl_leg_dbt where t_legkind=0) sou '||CHR(10)||'on (sou.t_dealid=tgt.TGT_PARENTID)'||CHR(10)||'when matched then update set tgt.TGT_BS_BEGDATE=sou.begdate', 1, 
+    'Обогащение записи для РЕПО с корзиной - добавление TGT_BS_BEGDATE - дата начальной поставки обеспечения', 'Добавление TGT_BS_BEGDATE (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 420, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0 and t_parentid>0) tgt '||CHR(10)||'using ddl_tick_dbt sou '||CHR(10)||'on (sou.t_dealid=tgt.TGT_PARENTID)'||CHR(10)||'when matched then update set tgt.TGT_BS_DEALKIND=sou.t_dealtype', 1, 
+    'Обогащение записи для РЕПО с корзиной - добавление TGT_BS_DEALKIND - вид базовой сделки (2134 для обратного РЕПО или 2139 для прямого)', 'Добавление TGT_BS_DEALKIND (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 430, 'update /*+ # */ DTXDEAL_TMP set TGT_BS_DIRECTION='||CHR(13)||CHR(10)||'CASE T_KIND WHEN 10 THEN decode(TGT_BS_DEALKIND, 2139, 1, 2134, 0)'||CHR(13)||CHR(10)||'            WHEN 20 THEN decode(TGT_BS_DEALKIND, 2139, 0, 2134, 1)'||CHR(13)||CHR(10)||'            END'||CHR(13)||CHR(10)||' where t_parentid > 0 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_BS_DIRECTION - направление движения обеспечения по сделке РЕПО с корзиной. 0 - ввод, 1 - вывод', 'Добавление TGT_BS_DIRECTION (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 450, 'update /*+ # */ DTXDEAL_TMP set TGT_BS_PAYER='||CHR(10)||'CASE T_KIND WHEN 10 THEN decode(TGT_BS_DEALKIND, 2139, t_partyid, 2134, 1)'||CHR(10)||'            WHEN 20 THEN decode(TGT_BS_DEALKIND, 2139, 1, 2134, t_partyid)'||CHR(10)||'            END'||CHR(10)||' where t_parentid > 0 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_BS_PAYER - плательщик в этом движении обеспечения. Либо наш банк(1), либо t_dealid из операции', 'Добавление TGT_BS_PAYER (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 460, 'update /*+ # */ DTXDEAL_TMP set TGT_BS_AMOUNT_AFTER = CASE TGT_BS_DIRECTION WHEN 1 THEN tgt_bs_amount-t_amount ELSE tgt_bs_amount-t_amount END  where t_parentid > 0 and t_action=1 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_BS_AMOUNT_AFTER - количество бумаг в обеспечении под сделкой РЕПО на корзину после выполнения этой операции', 'Добавление TGT_BS_AMOUNT_AFTER (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 470, 'update /*+ # */ DTXDEAL_TMP set TGT_BS_RQTYPE='||CHR(10)||'CASE WHEN TGT_BS_RETDATE=T_DATE THEN 8'||CHR(10)||'     WHEN TGT_BS_BEGDATE=T_DATE THEN 8'||CHR(10)||'     ELSE 9'||CHR(10)||'END'||CHR(10)||' where t_parentid > 0 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_BS_RQTYPE - вид платежа по этому движению обеспечения. Либо 9-комп. поставка, либо 8-ввод или вывод обеспечения', 'Добавление TGT_BS_RQTYPE (для РЕПО с корзиной)', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 80, sysdate, t_dealid, 598 from dtxdeal_tmp sou where t_parentid>0 and tgt_parentid is null', 1, 
+    'Проверяем наличие базовой сделки по РЕПО с корзиной для этого движения обеспечения', 'Проверка заполнения T_PARENTID', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 4, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 80, sysdate, t_dealid, 599 from dtxdeal_tmp sou where TGT_BS_AMOUNT_AFTER < 0', 1, 
+    'Проверяем достаточность обеспечения для вывода (обработка фиктивной сделки для РЕПО на корзину)', 'Проверка достаточности обеспечения (РЕПО с корзиной)', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (90, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 601 from dtxdemand_tmp where t_dealid is null', 1, 
     'Не задан параметр T_DEALID - идентификатор сделки', 'Проверка заполнения T_DEALID', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 602 from dtxdemand_tmp where t_part is null', 1, 
+   (90, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 602 from dtxdemand_tmp where t_part is null', 1, 
     'Не задан параметр T_PART - номер части сделки', 'Проверка заполнения T_PART', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 603 from dtxdemand_tmp where t_kind is null', 1, 
+   (90, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 603 from dtxdemand_tmp where t_kind is null', 1, 
     'Не задан параметр T_KIND - вид платежа', 'Проверка заполнения T_KIND', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 604 from dtxdemand_tmp where t_direction is null', 1, 
+   (90, 2, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 604 from dtxdemand_tmp where t_direction is null', 1, 
     'Не задан параметр t_direction - вид платежа', 'Проверка заполнения T_DIRECTION', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 605 from dtxdemand_tmp where t_fikind is null', 1, 
+   (90, 2, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 605 from dtxdemand_tmp where t_fikind is null', 1, 
     'Не задан t_fikind  платежа', 'Проверка заполнения T_FIKIND', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 606 from dtxdemand_tmp where t_date is null', 1, 
+   (90, 2, 60, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 606 from dtxdemand_tmp where t_date is null', 1, 
     'Не задано t_date - дата платежа', 'Проверка заполнения T_DATE', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 70, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 607 from dtxdemand_tmp where t_sum is null', 1, 
+   (90, 2, 70, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 607 from dtxdemand_tmp where t_sum is null', 1, 
     'Не задано t_sum - сумма платежа', 'Проверка заполнения T_SUM', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 608 from dtxdemand_tmp where t_state is null', 1, 
+   (90, 2, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 608 from dtxdemand_tmp where t_state is null', 1, 
     'Не задано t_state - статус платежа', 'Проверка заполнения T_STATE', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 90, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 609 from dtxdemand_tmp where t_paycurrencyid is null and t_kind not in (10,60,120)', 1, 
+   (90, 2, 90, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 609 from dtxdemand_tmp where t_paycurrencyid is null and t_kind not in (10,60,120)', 1, 
     'Не задано t_paycurrencyid - валюта платежа', 'Проверка заполнения T_PAYCURRENCYID', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 2, 100, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select * from (select :1, :2, :3, :4, 70, sysdate, t_demandid, 900 from dtxdemand_tmp sou group by t_demandid, t_instancedate having count(*)>1)', 2, 
+   (90, 2, 100, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select * from (select :1, :2, :3, :4, t_instancedate, 70, sysdate, t_demandid, 900 from dtxdemand_tmp sou group by t_demandid, t_instancedate having count(*)>1)', 2, 
     'Проверяем записи на предмет дублирования id внутри t_instancedate, поскольку по ограничениям реализации объект может присутствовать только 1 раз в день', 'Проверка на дублирование id внутри дня', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -614,13 +686,13 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 611 from dtxdemand_tmp where TGT_DEMANDID is null and t_action in (2,3)', 1, 
+   (90, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 611 from dtxdemand_tmp where TGT_DEMANDID is null and t_action in (2,3)', 1, 
     'Ошбка: Не найдено в dtxreplobj реплицированное Т/О по сделке (для обновлений и удалений)', 'Не найдено в dtxreplobj Т/О по сделке (action = 2,3)', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (90, 4, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 90, sysdate, t_demandid, 612 from dtxdemand_tmp where tgt_dealid is null', 1, 
+   (90, 4, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 612 from dtxdemand_tmp where tgt_dealid is null', 1, 
     'Проверяем наличие реплицированной сделки по платежу в DTXREPLOBJ', 'Проверка наличие сделки в dtxreplobj', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -632,26 +704,20 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 701 from dtxcomiss_tmp where t_dealid = 0', 1, 
+   (100, 2, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 701 from dtxcomiss_tmp where t_dealid = 0', 1, 
     'Ошибка: сделка под комиссией не задана', 'Проверка T_DEALID', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 703 from dtxcomiss_tmp where t_currencyid = -1', 1, 
+   (100, 2, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 703 from dtxcomiss_tmp where t_currencyid = -1', 1, 
     'Ошибка: валюта комиссиии не задана', 'Проверка T_CURRENCYID', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 709 from dtxcomiss_tmp where t_sum = 0', 1, 
+   (100, 2, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 709 from dtxcomiss_tmp where t_sum = 0', 1, 
     'Ошибка: не задана сумма комиссии', 'Проверка T_SUM - суммы комиссии', 'X', 'X');
-Insert into DTX_QUERY_DBT
-   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
-    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
- Values
-   (100, 3, 10, 'update /*+ # */ DTXCOMISS_TMP set TGT_COMISSID=ddlcomis_dbt_seq.nextval where t_action=1 and t_replstate=0', 1, 
-    'Обогащение записи - добавление TGT_COMISSID (ID комиссии). Для вставок, из последовательности ddlcomis_dbt_seq', 'Добавление TGT_COMISSID (для изменений/удалений)', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
@@ -680,42 +746,48 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 3, 60, 'update /*+ # */ DTXCOMISS_TMP set TGT_NDS = CASE WHEN t_type in (3,9) THEN  T_SUM-round(T_SUM/118*100, 2) ELSE 0 END', 1, 
-    'Обогащение записи - добавление TGT_NDS ', 'Добавление TGT_NDS (отключено)', NULL, NULL);
+   (100, 3, 60, 'update /*+ # */ DTXCOMISS_TMP set TGT_NDS = 0'||CHR(13)||CHR(10)||'--CASE WHEN t_type in (3,9) THEN  T_SUM-round(T_SUM/118*100, 2) ELSE 0 END', 1, 
+    'Обогащение записи - добавление TGT_NDS ', 'Добавление TGT_NDS (отключено)', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 3, 70, 'update /*+ # */ DTXCOMISS_TMP set TGT_CONTRACTID = GetFictContract when GetFictContract > 0', 1, 
+   (100, 3, 70, 'update /*+ # */ DTXCOMISS_TMP set TGT_CONTRACTID = Load_RSS.GetFictContract where Load_RSS.GetFictContract > 0', 1, 
     'Обогащение записи - добавление TGT_CONTRACTID из заголовка пакета ', 'Добавление TGT_CONTRACTID (1 часть, фиктивный получатель)', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 702 from dtxcomiss_tmp where TGT_DEALID is null', 1, 
+   (100, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 702 from dtxcomiss_tmp where TGT_DEALID is null', 1, 
     'Ошибка: не найдена реплицированная сделка под комиссией', 'Проверка TGT_DEALID', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 4, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 704 from dtxcomiss_tmp where TGT_CURRENCYID is null', 1, 
+   (100, 4, 20, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 704 from dtxcomiss_tmp where TGT_CURRENCYID is null', 1, 
     'Ошибка: не найдена реплицированная валюта комиссии', 'Проверка TGT_CURRENCYID', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 4, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 706 from dtxcomiss_tmp where TGT_COMISSID is null and t_action in (2,3)', 1, 
+   (100, 4, 30, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 706 from dtxcomiss_tmp where TGT_COMISSID is null and t_action in (2,3)', 1, 
     'Ошибка: изменяемая/удаляемая комиссия по сделке не существует. Проверка по DTXREPLOBJ_DBT', 'Проверка TGT_COMISSID (для изменений/удалений) - 1', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 4, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_comissid, 706 from (select * from dtxcomiss_tmp where t_replstate=0 and t_action in (2,3)) s '||CHR(10)||'LEFT JOIN ddlcomis_dbt t on (s.tgt_comissid=t.t_id)'||CHR(10)||'where t.t_id is null'||CHR(10)||'', 1, 
+   (100, 4, 40, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 706 from (select * from dtxcomiss_tmp where t_replstate=0 and t_action in (2,3)) s '||CHR(10)||'LEFT JOIN ddlcomis_dbt t on (s.tgt_comissid=t.t_id)'||CHR(10)||'where t.t_id is null'||CHR(10)||'', 1, 
     'Ошибка: изменяемая/удаляемая комиссия по сделке не существует. Проверка по DDLCOMIS_DBT', 'Проверка TGT_COMISSID (для изменений/удалений) - 2', 'X', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 4, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(10)||'select :1, :2, :3, :4, 100, sysdate, t_courseid, 707 from dtxcomiss_tmp where TGT_COMISSID is not null and t_action = 1', 1, 
+   (100, 4, 50, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 100, sysdate, t_comissid, 707 from dtxcomiss_tmp where TGT_COMISSID is not null and t_action = 1', 1, 
     'Ошибка: добавляемая комиссия уже есть в системе', 'Проверка TGT_COMISSID (для вставок)', 'X', 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 5, 10, 'update /*+ # */ DTXCOMISS_TMP set TGT_COMISSID=ddlcomis_dbt_seq.nextval where t_action=1 and t_replstate=0', 1, 
+    'Обогащение записи - добавление TGT_COMISSID (ID комиссии). Для вставок, из последовательности ddlcomis_dbt_seq', 'Добавление TGT_COMISSID (для изменений/удалений)', NULL, 'X');
 COMMIT;
