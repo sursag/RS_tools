@@ -920,6 +920,19 @@ is
         deals_create_basket_records;
 
         ----------------------------------------------------------------------------
+        
+        -- Запись отсутствующих договоров обслуживания
+        WRITE_LOG_START;
+        insert into dsfcontr_dbt(T_ID, T_OBJECTTYPE, T_FIID, T_OBJECT, T_PARTYID, T_NUMBER, T_DATEBEGIN, T_DATEPROLONG, T_DATECLOSE, T_PAYMETHOD, T_NAME, T_DATECONC, T_CONTRACTORID, T_SERVKIND, T_SERVKINDSUB, T_SETACCSEARCHALG, T_INVMETHOD, T_PAYFIID, T_PAYRATEID, T_PAYRATEPERCENT, T_PAYRATEDATEKIND, T_INVOICEDURATION, T_DEPARTMENT, T_ACCCODE, T_BRANCH, T_UNIONCONTRID, T_PREACPTID)
+        select dsfcontr_dbt_seq.nextval, 0, -1, null /*T_OBJECT*/, 2 /*T_PARTYID*/, 0, date'2000-01-01' /*T_DATEBEGIN*/, date'0001-01-01' /*T_DATEPROLONG*/, date'0001-01-01' /*T_DATECLOSE*/, 1, 'Договор обслуживания '||t_shortname, date'2000-01-01' /*T_DATECONC*/,
+        13 /*T_CONTRACTORID*/, 1, 0, 1, 1, 0 /*T_PAYFIID*/, 7, 0, 2, 7, 1, dsfcontr_dbt_seq.currval /*T_ACCCODE*/, 0, 0, 0
+        from (select tgt_partyid from dtxdeal_tmp where t_replstate=0 group by tgt_partyid) dl, dparty_dbt pt where dl.tgt_partyid=pt.t_partyid
+        and tgt_partyid not in (select t_partyid from dsfcontr_dbt);
+        WRITE_LOG_FINISH('Запись отсутствующих договоров обслуживания', 80);
+        commit;
+
+        ----------------------------------------------------------------------------
+
         -- Запись в DTXREPLOBJ_DBT
         WRITE_LOG_START;
         deb('Запись в DTXREPLOBJ_DBT');
@@ -1187,7 +1200,7 @@ is
                 
         deb('Заполнение DDLRQ_DBT (t_action=1)');
         insert /*+ parallel(4) */ into ddlrq_dbt(T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_NUM, T_AMOUNT, T_FIID, T_PARTY, T_RQACCID, T_PLACEID, T_STATE, T_PLANDATE, T_FACTDATE, T_USENETTING, T_NETTING, T_CLIRING, T_INSTANCE, T_CHANGEDATE, T_ACTION, T_ID_OPERATION, T_ID_STEP, T_SOURCE, T_SOURCEOBJKIND, T_SOURCEOBJID, T_TAXRATEBUY, T_TAXSUMBUY, T_TAXRATESELL, T_TAXSUMSELL, T_VERSION, T_FACTRECEIVERID)
-        select TGT_DEMANDID, TGT_DEALKIND /*T_DOCKIND*/, TGT_DEALID, T_PART, TGT_KIND/*T_KIND*/, TGT_SUBKIND, TGT_TYPE, TGT_STATE /*T_NUM*/, T_SUM, TGT_FIID, TGT_PARTY, -1, -1/*T_PLACEID*/, TGT_STATE, TGT_PLANDATE, TGT_FACTDATE, CHR(0), CHR(0)/*T_NETTING*/, null, 0, TGT_CHANGEDATE, 0 /*T_ACTION*/, 0, 2908, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
+        select TGT_DEMANDID, TGT_BOFFICEKIND /*T_DOCKIND*/, TGT_DEALID, T_PART, TGT_KIND/*T_KIND*/, TGT_SUBKIND, TGT_TYPE, TGT_NUM /*T_NUM*/, T_SUM, TGT_FIID, TGT_PARTY, -1, -1/*T_PLACEID*/, TGT_STATE, TGT_PLANDATE, TGT_FACTDATE, CHR(0), CHR(0)/*T_NETTING*/, null, 0, TGT_CHANGEDATE, 0 /*T_ACTION*/, 0, 2908, 0, -1, 0 /*T_SOURCEOBJID*/, 0, 0, 0, 0, 0, 0
         from dtxdemand_tmp where t_replstate=0 and t_action=1;
         WRITE_LOG_FINISH('Заполнение DDLRQ_DBT (t_action=1)', 90); 
         COMMIT;

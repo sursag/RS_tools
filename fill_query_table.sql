@@ -92,7 +92,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (70, 3, 55, 'merge into (select * from dtxcourse_tmp where t_basefikind=20) tgt '||CHR(13)||CHR(10)||'using (select t_fiid, t_root from dfininstr_dbt f join davrkinds_dbt k on (f.T_AVOIRKIND=k.T_AVOIRKIND)) sou '||CHR(13)||CHR(10)||'on (sou.t_fiid=tgt.TGT_BASEFIID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_BASEFIKIND=sou.T_ROOT'||CHR(13)||CHR(10)||'', 1, 
+   (70, 3, 55, 'merge into (select * from dtxcourse_tmp where t_basefikind=20) tgt '||CHR(13)||CHR(10)||'using (select t_fiid, t_root from dfininstr_dbt f join davrkinds_dbt k on (f.T_AVOIRKIND=k.T_AVOIRKIND and f.T_FI_KIND=k.T_FI_KIND)) sou '||CHR(13)||CHR(10)||'on (sou.t_fiid=tgt.TGT_BASEFIID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_BASEFIKIND=sou.T_ROOT'||CHR(13)||CHR(10)||'', 1, 
     'Обогащение записи - добавление TGT_BASEFIKIND', 'Добавление TGT_BASEFIKIND', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -292,6 +292,12 @@ Insert into DTX_QUERY_DBT
  Values
    (80, 3, 30, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0 and T_PARENTID is not null) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=80 and t_objstate=0) sou on (sou.t_objectid=tgt.T_PARENTID)'||CHR(10)||'when matched then update set tgt.TGT_PARENTID=sou.T_DESTID', 1, 
     'Обогащение записи - добавление TGT_PARENTID из DTXREPLOBJ_DBT', 'Добавление TGT_PARENTID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (80, 3, 35, 'merge /*+ # */ into (select * from dtxdeal_tmp where t_replstate=0) tgt '||CHR(10)||'using ddl_tick_dbt sou '||CHR(10)||'on (sou.t_dealid=tgt.TGT_PARENTID)'||CHR(10)||'when matched then update set tgt.TGT_PARTYID=sou.T_PARTYID', 1, 
+    'Обогащение записи - добавление TGT_PARTYID (ID контрагента)', 'Добавление TGT_PARTYID', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
@@ -686,6 +692,18 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
+   (90, 3, 145, 'merge /*+parallel(4)*/ into (select * from dtxdemand_tmp a where t_replstate=0 and t_action=2) tgt '||CHR(10)||'using ddlrq_dbt sou '||CHR(10)||'on (sou.t_id=tgt.tgt_demandid)'||CHR(10)||'when matched then update set tgt.TGT_NUM=sou.t_num', 1, 
+    'Обогащение записи - добавление TGT_NUM из ddlrq_dbt', 'Добавление TGT_NUM из ddlrq_dbt', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (90, 3, 150, 'merge /*+parallel(4)*/ into (select rowid ri, a.* from dtxdemand_tmp a where t_replstate=0) tgt '||CHR(13)||CHR(10)||'using (select rowid ri, nvl(tgt_num,0) old_num, sum(1) over(partition by tgt_bofficekind,tgt_dealid, t_part, tgt_type,tgt_fiid order by t_demandid) num from dtxdemand_tmp) sou '||CHR(13)||CHR(10)||'on (sou.ri=tgt.ri)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_NUM=sou.old_num + sou.NUM-1', 1, 
+    'Обогащение записи - пересчет TGT_NUM', 'Пересчет TGT_NUM', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
    (90, 4, 10, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) '||CHR(13)||CHR(10)||'select :1, :2, :3, :4, t_instancedate, 90, sysdate, t_demandid, 611 from dtxdemand_tmp where TGT_DEMANDID is null and t_action in (2,3)', 1, 
     'Ошбка: Не найдено в dtxreplobj реплицированное Т/О по сделке (для обновлений и удалений)', 'Не найдено в dtxreplobj Т/О по сделке (action = 2,3)', 'X', 'X');
 Insert into DTX_QUERY_DBT
@@ -728,7 +746,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 3, 30, 'merge /*+ # */ into (select * from dtxcomiss_tmp) tgt '||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=80 and t_objstate=0) sou on (sou.t_objectid=tgt.T_DEALID)'||CHR(10)||'when matched then update set tgt.TGT_DEALID=sou.T_DESTID', 1, 
+   (100, 3, 30, 'merge /*+ # */ into (select * from dtxcomiss_tmp) tgt '||CHR(13)||CHR(10)||'using (select t_objectid, t_destid from dtxreplobj_dbt where t_objecttype=80 and t_objstate=0) sou on (sou.t_objectid=tgt.T_DEALID)'||CHR(13)||CHR(10)||'when matched then update set tgt.TGT_DEALID=sou.T_DESTID', 1, 
     'Обогащение записи - добавление TGT_DEALID (ID сделки)', 'Добавление TGT_DEALID', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -752,7 +770,13 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
  Values
-   (100, 3, 70, 'update /*+ # */ DTXCOMISS_TMP set TGT_CONTRACTID = Load_RSS.GetFictContract where Load_RSS.GetFictContract > 0', 1, 
+   (100, 3, 65, 'merge /*+parallel(4)*/ into (select * from dtxcomiss_tmp where t_replstate=0) tgt '||CHR(10)||'using ddl_tick_dbt sou '||CHR(10)||'on (sou.t_dealid=tgt.tgt_dealid)'||CHR(10)||'when matched then update set tgt.TGT_PARTYID=sou.t_partyid', 1, 
+    'Обогащение записи - добавление TGT_PARTYID (ID контрагента)', 'Добавление TGT_PARTYID', NULL, 'X');
+Insert into DTX_QUERY_DBT
+   (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
+    T_DESC, T_NAME, T_USE_BIND, T_IN_USE)
+ Values
+   (100, 3, 70, 'merge /*+ # */ into (select * from DTXCOMISS_TMP where t_replstate=0) tgt'||CHR(13)||CHR(10)||'using dsfcontr_dbt sou on (tgt.tgt_partyid=sou.t_partyid)'||CHR(13)||CHR(10)||'when mathed then update set tgt.TGT_CONTRACTID = sou.t_id'||CHR(13)||CHR(10)||'', 1, 
     'Обогащение записи - добавление TGT_CONTRACTID из заголовка пакета ', 'Добавление TGT_CONTRACTID (1 часть, фиктивный получатель)', NULL, 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
