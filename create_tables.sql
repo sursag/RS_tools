@@ -95,14 +95,21 @@ alter sequence dobjatcor_dbt_seq cache 200;
 
 
 create or replace view v_log as
-select t_starttime start_time, trunc(t_duration/60)||':'||lpad(mod(t_duration,60),2,'0') Exec_Time, t_text,  t_set, t_num, T_EXECROWS, trunc(total/60)||':'||lpad(mod(total,60),2,'0') Total_Time from (
-select a.*, sum(t_duration) over() total from DTX_QUERYLOG_DBT a where t_sessdetail=(select max(t_sessdetail) from DTX_QUERYLOG_DBT ))  
+select t_starttime start_time, trunc(t_duration/60)||':'||lpad(mod(t_duration,60),2,'0') Exec_Time, t_text,  t_set, t_num, T_EXECROWS, 
+trunc(by_procedure/60)||':'||lpad(mod(by_procedure,60),2,'0') Time_by_procedure,
+trunc(total/60)||':'||lpad(mod(total,60),2,'0') Total_Time from (
+select a.*, 
+sum(t_duration) over(partition by t_sessdetail) by_procedure,
+sum(t_duration) over() total from DTX_QUERYLOG_DBT a where t_session=(select max(t_session) from DTX_QUERYLOG_DBT )
+)  
 order by t_id desc;
+
+
 
 create or replace view v_err as
 select T_TIMESTAMP, T_SEVERITY, T_OBJECTTYPE, T_OBJECTID, T_QUERYID, IS_LOGGED, T_ERRORCODE, T_DESC 
 from dtx_error_dbt left join dtx_errorkinds_dbt on (T_ERRORCODE=t_code)
-where t_detailid=(select max(t_detailid) from dtx_error_dbt) order by t_id;
+where t_sessid=(select max(t_sessid) from dtx_error_dbt) order by t_id;
 
 
 
