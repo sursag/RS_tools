@@ -11,6 +11,8 @@ is
     
     g_use_needdemand constant boolean := true;  -- »спользовать NEEDDEMAND в сделках. ѕоскольку многие банки не используют его в принципе, нет смысла прогон€ть каждый раз запросы
     
+    g_parallel_clause varchar2(100) := 'parallel(8)';
+    
     c_DEFAULT_FICTFI  number := 2192;  -- ‘иктивный FIID дл€ сделки с корзиной, по умолчанию.
         
     -- константы типов
@@ -64,7 +66,10 @@ is
     procedure load_demands_by_period(p_startdate date, p_enddate date default null, p_stage number default null);
     procedure load_courses_by_period(p_startdate date, p_enddate date default null, p_stage number default null);
     procedure load_comiss_by_period(p_startdate date, p_enddate date default null, p_stage number default null);
-
+    
+    -- точка входа дл€ макроса репликации
+    -- если не заданы граничные даты, реплицирует за всЄ врем€
+    procedure start_replication(p_startdate date default null, p_enddate date default null);
 
     g_my_SID  number; -- дл€ сбора статистики по пореблению пам€ти и т.д.
     g_SESSION_ID number(10); -- номер сеанса дл€ логов

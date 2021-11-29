@@ -599,6 +599,7 @@ is
 
     procedure run_one_query_set( p_objecttype number, p_set number )
     is 
+        l_text varchar2(2000 char);
     begin
         deb('Запущена процедура RUN_ONE_QUERY_SET для OBJECTTYPE=#1 и сета #2', p_objecttype, p_set);
         -- выполняем заданный сет запросов
@@ -606,10 +607,11 @@ is
         loop
                 begin
                     WRITE_LOG_START;
+                    l_text := replace( q_rec.t_text, '#', g_parallel_clause);
                     if q_rec.t_use_bind = 'X' then
-                        execute immediate q_rec.t_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_screenid, q_rec.t_severity;
+                        execute immediate l_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_screenid, q_rec.t_severity;
                     else
-                        execute immediate q_rec.t_text;
+                        execute immediate l_text;
                     end if;
                     deb('    ' || q_rec.t_name || '.  #1 записей', sql%rowcount);
                     WRITE_LOG_FINISH( q_rec.T_NAME, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
@@ -620,7 +622,7 @@ is
                     deb('Ошибка в запросе номер #1 в сете #2, id запроса #3', q_rec.T_NUM, q_rec.T_SET, q_rec.T_SCREENID);
                     WRITE_LOG_FINISH( '! Ошибка: '  || q_rec.T_NAME, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
                     -- при выводе ошибочного запроса его параметры заменяются на нужные константы, чтобы можно было выполнить запрос в sql
-                    WRITE_LOG_FINISH( replace(replace(replace(replace(q_rec.t_text,':1',g_SESSION_ID),':2', g_SESS_DETAIL_ID),':2', q_rec.t_screenid),':2', q_rec.t_severity), q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
+                    WRITE_LOG_FINISH( replace(replace(replace(replace(l_text,':1',g_SESSION_ID),':2', g_SESS_DETAIL_ID),':2', q_rec.t_screenid),':2', q_rec.t_severity), q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
                     raise;
                 end; 
         end loop;
@@ -1301,7 +1303,7 @@ is
     -- формирует записи в целевой системе на основе таблицы снимка
     procedure COURSES_CREATE_RECORDS
     is
-        l_counter number := 0;  -- счетчик обработанных строк
+        l_count number := 0;  -- счетчик обработанных строк
     begin
         deb('Запущена процедура COURSES_CREATE_RECORDS');
         
@@ -1312,7 +1314,7 @@ is
         -- Значение из DRATEDEF_DBT преходит в историю, если среди новых записей по этому курсу есть одна с флажком TGT_ISLASTDATE
         insert /*+parallel(4)*/ into dratehist_dbt(T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT)
         select T_RATEID, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_ISMANUALINPUT  
-        from  dratedef_dbt where t_rateid in (select tgt_rateid from dtxcourse_tmp where TGT_ISLASTDATE=chr(88) and t_action=1 and t_replstate=0);
+        from  dratedef_dbt where t_rateid in (select tgt_rateid from dtxcourse_tmp where TGT_ISLASTDATE=chr(88) and t_action=1 and t_replstate=0 and tgt_isnominal is null);
         --l_counter := l_counter + sql%rowcount;
         WRITE_LOG_FINISH('Перенос DRATEDEF в DRATEHIST', 70); 
         commit;
@@ -1322,13 +1324,13 @@ is
         -- пойдет строка с TGT_ISLASTDATE = 'X' и TGT_NEWRATEID IS NOT NULL
         insert /*+parallel(4)*/ into dratedef_dbt(T_RATEID, T_FIID, T_OTHERFI, T_NAME, T_DEFINITION, T_TYPE, T_ISDOMINANT, T_ISRELATIVE, T_INFORMATOR, T_MARKET_PLACE, T_ISINVERSE, T_RATE, T_SCALE, T_POINT, T_INPUTDATE, T_INPUTTIME, T_OPER, T_SINCEDATE, T_SECTION)
         select TGT_NEWRATEID, TGT_FIID, TGT_BASEFIID, 'Курс для ' || TGT_BASEFIID, chr(1), TGT_TYPE, TGT_ISDOMINANT, TGT_ISRELATIVE, TGT_MARKETID, TGT_MARKETID, chr(0), TGT_RATE, T_SCALE, T_POINT, t_instancedate, date'0001-01-01', g_oper, t_ratedate, TGT_SECTORID     
-        from dtxcourse_tmp where TGT_ISLASTDATE = 'X' and TGT_NEWRATEID IS NOT NULL AND T_REPLSTATE=0;
+        from dtxcourse_tmp where TGT_ISLASTDATE = 'X' and TGT_NEWRATEID IS NOT NULL AND T_REPLSTATE=0 and tgt_isnominal is null;
         WRITE_LOG_FINISH('Вставка в DRATEDEF', 70);
         commit;
         
         -- для всех остальных (вставок и изменений) обновляем значение в dratedef_dbt
         merge /*+parallel(4)*/ into dratedef_dbt tgt
-        using (select * from dtxcourse_tmp where TGT_ISLASTDATE = 'X') sou
+        using (select * from dtxcourse_tmp where TGT_ISLASTDATE = 'X' and t_replstate=0 and tgt_isnominal is null) sou
         on (sou.tgt_rateid = tgt.t_rateid)
         when matched then update 
         set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
@@ -1345,7 +1347,7 @@ is
 
         -- обновляем значение в dratehist_dbt для action=2
         merge /*+parallel(4)*/into dratehist_dbt tgt
-        using (select * from dtxcourse_tmp where TGT_ISLASTDATE is null and t_action=2 and t_replstate=0) sou
+        using (select * from dtxcourse_tmp where TGT_ISLASTDATE is null and t_action=2 and t_replstate=0 and tgt_isnominal is null) sou
         on (sou.tgt_rateid = tgt.t_rateid and tgt.T_SINCEDATE=sou.T_RATEDATE)
         when matched then update 
         set tgt.T_RATE=sou.TGT_RATE, tgt.T_SCALE=sou.T_SCALE, tgt.T_POINT=sou.T_POINT, tgt.T_INPUTDATE=sou.T_INSTANCEDATE, 
@@ -1355,11 +1357,33 @@ is
         
         -- удаляем значение из dratehist_dbt для acction=3
         delete /*+parallel(4)*/ from dratehist_dbt where (t_rateid, t_sincedate) in
-        (select tgt_rateid, T_RATEDATE from dtxcourse_tmp where t_replstate=0 and t_action=3);
+        (select tgt_rateid, T_RATEDATE from dtxcourse_tmp where t_replstate=0 and t_action=3 and tgt_isnominal is null);
         WRITE_LOG_FINISH('Удаление из DRATEHIST', 70);
         commit;
         
         -- потом добавить удаление последнего значения курса - из dratedef_dbt. Исходное решение на макросах этого не умело, значит, не критично
+
+        --=====================================================================================
+        -- обработка записей на изменение номинала
+        l_count := 0;
+        insert into DFIVLHIST_DBT (T_ID, T_FIID, T_VALKIND, T_ENDDATE, T_VALUE, T_INTVALUE) 
+        select TGT_RATEID, TGT_BASEFIID, 1, T_RATEDATE, T_RATE, 0 from DTXCOURSE_TMP 
+        where t_action =1 and TGT_ISNOMINAL=chr(88) and t_replstate=0;
+        l_count := l_count + sql%rowcount;
+        commit;
+        
+        merge /*+parallel(4) */ into  DFIVLHIST_DBT tgt
+        using (select TGT_RATEID, TGT_BASEFIID, T_RATEDATE, T_RATE from DTXCOURSE_TMP where t_action=2 and t_replstate=0 and TGT_ISNOMINAL=chr(88)) sou
+        on (tgt.t_id = sou.tgt_rateid)
+        when matched then update set T_FIID=TGT_BASEFIID, T_ENDDATE=T_RATEDATE, T_VALUE=T_RATE;
+        l_count := l_count + sql%rowcount;
+        commit;
+        
+        delete /*+parallel(4) */ from DFIVLHIST_DBT where T_ID in 
+        (select TGT_RATEID from DTXCOURSE_TMP where t_action=3 and t_replstate=0 and TGT_ISNOMINAL=chr(88));
+        l_count := l_count + sql%rowcount;
+        commit;
+        WRITE_LOG_FINISH('Обработка изменений номинала', 70, p_count=>l_count);
 
         --=====================================================================================
         --=====================================================================================
@@ -1936,6 +1960,32 @@ is
         
         deb('=== Завершен инициализирующий блок пакета ===');        
     end initialize;
+ 
+    procedure start_replication(p_startdate date default null, p_enddate date default null)
+    is
+        l_enddate date;
+        l_startdate date;
+    begin
+        deb('Запущена процедура START_REPLICATION');
+        WRITE_LOG_FINISH('Запущена процедура START_REPLICATION', 0);
         
+        l_startdate := nvl( p_enddate, date'0001-01-01');
+        l_enddate := nvl( p_enddate, date'4000-01-01'); 
+    
+        -- Назначение SESSION_ID
+        insert into dtx_session_dbt(t_startdate, t_enddate, t_user, t_status)
+        values( p_startdate, l_enddate, user, 'R') returning t_sessid into g_SESSION_ID;
+        
+        load_courses_by_period(l_startdate, l_enddate);
+        load_deals_by_period(l_startdate, l_enddate);
+        load_demands_by_period(l_startdate, l_enddate);
+        load_comiss_by_period(l_startdate, l_enddate);
+        
+        deb('Завершена процедура START_REPLICATION');
+        WRITE_LOG_FINISH('Завершена процедура START_REPLICATION', 0);
+        g_SESSION_ID := null;
+        
+    end start_replication;
+       
 end load_rss;
 /
