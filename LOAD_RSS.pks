@@ -1,17 +1,17 @@
-CREATE OR REPLACE PACKAGE GEB_20210823_TST.load_rss
+CREATE OR REPLACE PACKAGE load_rss
 is
     -- параметры
     g_debug_output boolean := true;         -- записывать отладочную информацию в буфер DBMS_OUTPUT
     g_debug_table  boolean := false;        -- записывать отладочную информацию в таблицу
     g_oper constant number := 1;            -- операционист, который будет прописываться во все таблицы
-    g_ourbank constant number := 12;        -- Код нашего банка. Проверить
+    g_ourbank constant number := 13;        -- Код нашего банка. Проверить
     g_department  constant number := 1;     -- Департамент по умолчанию. См. ddp_dep_dbt
     g_is_initialized  boolean := false;
     g_fictive_comiss_contract number := null;   -- фиктивный контракт комиссии ( dsfcontr_dbt.t_id )
     
     g_use_needdemand constant boolean := true;  -- Использовать NEEDDEMAND в сделках. Поскольку многие банки не используют его в принципе, нет смысла прогонять каждый раз запросы
     
-    g_parallel_clause varchar2(100) := 'parallel(8)';
+    g_parallel_clause varchar2(100) := 'parallel(16)';
     
     c_DEFAULT_FICTFI  number := 2192;  -- Фиктивный FIID для сделки с корзиной, по умолчанию.
         

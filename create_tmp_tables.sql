@@ -1,6 +1,8 @@
 -- Скрипт создает таблицы снимков
 -- Все таблицы постоянные, постфикс TMP сложился исторически, ничего не значит
 
+drop TABLE DTXDEAL_TMP;
+
 CREATE TABLE DTXDEAL_TMP
 (
   T_DEALID                  NUMBER(15)          NOT NULL,
@@ -260,7 +262,7 @@ COMMENT ON COLUMN DTXCOURSE_TMP.TGT_RATE IS 'Значение T_RATE, отмасштабированное
 
 
 
-
+drop TABLE DTXDEMAND_TMP;
 
 CREATE TABLE DTXDEMAND_TMP
 (
@@ -296,14 +298,15 @@ CREATE TABLE DTXDEMAND_TMP
   TGT_CHANGEDATE   DATE,
   TGT_TYPE         NUMBER(2),
   TGT_SUBKIND      NUMBER(1),
-  TGT_STATE        NUMBER(1)
+  TGT_STATE        NUMBER(1),
+  TGT_NUM	   NUMBER(3)
 )
 LOGGING 
 MONITORING;
 
 
 
-
+drop TABLE DTXCOMISS_TMP;
 
 CREATE TABLE DTXCOMISS_TMP
 (
@@ -319,6 +322,7 @@ CREATE TABLE DTXCOMISS_TMP
   T_DATE          DATE,
   TGT_COMISSID    NUMBER(15),
   TGT_COMMNUMBER  NUMBER(5),
+  TGT_COMMCODE    VARCHAR2(5),
   TGT_DEALID      NUMBER(15),
   TGT_PARTYID	  NUMBER(15),
   TGT_NDS         NUMBER,
