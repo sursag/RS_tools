@@ -133,8 +133,6 @@ where t_sessid=(select max(t_sessid) from dtx_error_dbt) order by t_id;
 
 
 
-
-
 delete DTX_ERRORKINDS_DBT;
 
 Insert into DTX_ERRORKINDS_DBT
