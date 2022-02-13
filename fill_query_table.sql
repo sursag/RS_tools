@@ -530,7 +530,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_IN_USE)
  Values
-   (80, 3, 180, 'update /*+ # */ dtxdeal_tmp set tgt_department = LOAD_RSS.GetDepartment; --nvl(( select t_code from dtxreplobj_dbt ro join ddp_dep_dbt dp on (ro.t_destid=dp.t_partyid and ro.t_objecttype=40 and ro.t_objstate=0)),1)', 1, 
+   (80, 3, 180, 'update /*+ # */ dtxdeal_tmp set tgt_department = LOAD_RSS.GetDepartment /* --nvl(( select t_code from dtxreplobj_dbt ro join ddp_dep_dbt dp on (ro.t_destid=dp.t_partyid and ro.t_objecttype=40 and ro.t_objstate=0)),1) */', 1, 
     'Обогащение записи - добавление TGT_DEPARTMENT', 'Добавление TGT_DEPARTMENT', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -952,10 +952,13 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_IN_USE)
  Values
-   (90, 3, 145, 'merge /*+ # */ into (select * from dtxdemand_tmp a where t_replstate=0 and t_action=2) tgt 
-using ddlrq_dbt sou 
-on (sou.t_id=tgt.tgt_demandid)
-when matched then update set tgt.TGT_NUM=sou.t_num', 1, 
+   (90, 3, 145, 'update /*+ # */ (select * from dtxdemand_tmp a where t_replstate=0) tgt
+set tgt_num = nvl((select max(t_num)+1 from ddlrq_dbt sou where 
+tgt.tgt_bofficekind = sou.T_DOCKIND
+and tgt.tgt_dealid = sou.T_DOCID 
+and tgt.t_part = sou.T_DEALPART 
+and tgt.tgt_type = sou.T_TYPE
+and tgt.tgt_fiid = sou.T_FIID), 0)', 1, 
     'Обогащение записи - добавление TGT_NUM из ddlrq_dbt', 'Добавление TGT_NUM из ddlrq_dbt', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 

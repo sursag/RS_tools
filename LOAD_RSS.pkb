@@ -647,6 +647,7 @@ is
                 end; 
         end loop;
         commit;
+        deb('Завершена процедура RUN_ONE_QUERY_SET для OBJECTTYPE=#1 и сета #2', p_objecttype, p_set);
     end run_one_query_set;
 
 
@@ -1217,7 +1218,7 @@ is
         merge /*+parallel(16) */ into (select T_ID, T_DOCKIND, T_DOCID, T_DEALPART, T_KIND, T_SUBKIND, T_TYPE, T_AMOUNT, T_FIID, T_PARTY, T_PLANDATE, T_FACTDATE, T_STATE from ddlrq_dbt) rq 
         using (select * from dtxdemand_tmp where t_replstate=0 and t_action=2) sou on (sou.tgt_demandid=rq.t_id)
         when matched then update set
-        RQ.T_DOCKIND=SOU.TGT_DEALKIND,          RQ.T_DOCID=SOU.TGT_DEALID,          RQ.T_DEALPART=SOU.T_PART, 
+        RQ.T_DOCKIND=SOU.TGT_BOFFICEKIND,       RQ.T_DOCID=SOU.TGT_DEALID,          RQ.T_DEALPART=SOU.T_PART, 
         RQ.T_KIND=SOU.TGT_KIND,                 RQ.T_SUBKIND=SOU.TGT_SUBKIND,       RQ.T_TYPE=SOU.TGT_TYPE, 
         RQ.T_AMOUNT=SOU.T_SUM,                  RQ.T_FIID=SOU.TGT_FIID,             RQ.T_PARTY=SOU.TGT_PARTY, 
         RQ.T_PLANDATE=SOU.TGT_PLANDATE,         RQ.T_FACTDATE=SOU.TGT_FACTDATE,     RQ.T_STATE=SOU.TGT_STATE;
