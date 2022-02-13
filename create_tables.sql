@@ -2,9 +2,17 @@
 -- Заполнение таблицы ошибок надо перенести в скрипт _fill_query_table.sql, когда тот перестанет так часто меняться
 
 
--- таблица сеансов
-DROP TABLE DTX_SESSION_DBT;
+-- удаление старых таблиц
+BEGIN
+   FOR i in (select * from user_tables where table_name in ('DTX_SESSION_DBT', 'DTX_SESS_DETAIL_DBT', 'DTX_QUERY_DBT', 'DTX_ERROR_DBT', 'DTX_ERRORKINDS_DBT', 'DTX_QUERYLOG_DBT'))
+   LOOP
+	--execute immediate 'DROP TABLE ' || i.table_name;
+        dbms_output.put_line('DROP TABLE ' || i.table_name);
+   END LOOP;
+END;
 
+
+-- таблица сеансов
 CREATE TABLE DTX_SESSION_DBT
 (
   T_SESSID     NUMBER(10) GENERATED ALWAYS AS IDENTITY ( START WITH 21 MAXVALUE 9999999999999999999999999999 MINVALUE 1 NOCYCLE CACHE 20 NOORDER NOKEEP NOSCALE) NOT NULL,
@@ -15,8 +23,6 @@ CREATE TABLE DTX_SESSION_DBT
 );
 
 -- таблица деталей сессий
-DROP TABLE DTX_SESS_DETAIL_DBT;
-
 CREATE TABLE DTX_SESS_DETAIL_DBT
 (
   T_DETAILID      NUMBER(10) GENERATED ALWAYS AS IDENTITY ( START WITH 41 MAXVALUE 9999999999999999999999999999 MINVALUE 1 NOCYCLE CACHE 20 NOORDER NOKEEP NOSCALE) NOT NULL,
@@ -36,7 +42,7 @@ DROP TABLE DTX_QUERY_DBT;
 -- таблица запросов
 CREATE TABLE DTX_QUERY_DBT
 (
-  T_SCREENID    NUMBER(5) GENERATED ALWAYS AS IDENTITY ( START WITH 61 MAXVALUE 9999999999999999999999999999 MINVALUE 1 NOCYCLE CACHE 20 NOORDER NOKEEP NOSCALE) NOT NULL,
+  T_QUERYID    NUMBER(5) GENERATED ALWAYS AS IDENTITY ( START WITH 61 MAXVALUE 9999999999999999999999999999 MINVALUE 1 NOCYCLE CACHE 20 NOORDER NOKEEP NOSCALE) NOT NULL,
   T_OBJECTTYPE  NUMBER(5),
   T_SET         NUMBER(1),
   T_NUM         NUMBER(5),
@@ -72,7 +78,9 @@ LOGGING
 MONITORING;
 
 
-create table dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));
+DROP TABLE dtx_errorkinds_dbt;
+
+CREATE TABLE dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));
 
 
 DROP TABLE DTX_QUERYLOG_DBT;
@@ -84,7 +92,7 @@ CREATE TABLE DTX_QUERYLOG_DBT
   T_STARTTIME   DATE,
   T_DURATION    NUMBER(5),
   T_TEXT        VARCHAR2(2000 CHAR),  
-  T_OBJECTYPE   NUMBER(3),
+  T_OBJECTTYPE   NUMBER(3),
   T_SET         NUMBER(5),
   T_NUM         NUMBER(5),
   T_RESULT      CHAR(1 CHAR),
@@ -103,7 +111,6 @@ alter sequence dobjatcor_dbt_seq cache 400;
 alter sequence dsfcontr_dbt_seq  cache 200;
 alter sequence dspground_dbt_seq cache 200;
 alter sequence DTXLOADLOG_DBT_SEQ cache 200;
-
 
 
 
@@ -126,12 +133,10 @@ where t_sessid=(select max(t_sessid) from dtx_error_dbt) order by t_id;
 
 
 
+
+
 delete DTX_ERRORKINDS_DBT;
 
---SQL Statement which produced this data:
---
---  select rowid, a.* from dtx_errorkinds_dbt a order by 2 desc;
---
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
  Values

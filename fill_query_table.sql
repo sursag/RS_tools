@@ -1,4 +1,8 @@
 SET DEFINE OFF;
+
+delete DTX_QUERY_DBT;
+
+
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_IN_USE)
@@ -512,10 +516,10 @@ Insert into DTX_QUERY_DBT
     'Обогащение записи - добавление TGT_COUNTRY', 'Добавление TGT_COUNTRY', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
-    T_DESC, T_NAME)
+    T_DESC, T_NAME, T_IN_USE)
  Values
    (80, 3, 160, 'update /*+ # */ dtxdeal_tmp set TGT_EXISTBACK = chr(88) where t_replstate=0 and T_KIND in (30,40)', 1, 
-    'Обогащение записи - добавление TGT_EXISTBACK', 'Добавление TGT_EXISTBACK');
+    'Обогащение записи - добавление TGT_EXISTBACK', 'Добавление TGT_EXISTBACK', null);
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_IN_USE)
@@ -526,7 +530,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_IN_USE)
  Values
-   (80, 3, 180, 'update /*+ # */ dtxdeal_tmp set tgt_department = nvl(( select t_code from dtxreplobj_dbt ro join ddp_dep_dbt dp on (ro.t_destid=dp.t_partyid and ro.t_objecttype=40 and ro.t_objstate=0)),1)', 1, 
+   (80, 3, 180, 'update /*+ # */ dtxdeal_tmp set tgt_department = LOAD_RSS.GetDepartment; --nvl(( select t_code from dtxreplobj_dbt ro join ddp_dep_dbt dp on (ro.t_destid=dp.t_partyid and ro.t_objecttype=40 and ro.t_objstate=0)),1)', 1, 
     'Обогащение записи - добавление TGT_DEPARTMENT', 'Добавление TGT_DEPARTMENT', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
@@ -1031,7 +1035,7 @@ Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_IN_USE)
  Values
-   (100, 3, 50, 'update /*+ # */ DTXCOMISS_TMP set TGT_COMMCODE = (select t_fi_code || lpad(T_TYPE,2,'0') from dfininstr_dbt where t_fiid=TGT_CURRENCYID)', 1, 
+   (100, 3, 50, 'update /*+ # */ DTXCOMISS_TMP set TGT_COMMCODE = (select t_fi_code || lpad(T_TYPE,2,''0'') from dfininstr_dbt where t_fiid=TGT_CURRENCYID)', 1, 
     'Обогащение записи - добавление TGT_COMMCODE (код комиссии)', 'Добавление TGT_COMMCODE (код комиссии)', 'X');
 
 Insert into DTX_QUERY_DBT
@@ -1066,7 +1070,7 @@ Insert into DTX_QUERY_DBT
 using dsfcontr_dbt sou on (tgt.tgt_partyid=sou.t_partyid)
 when matched then update set tgt.TGT_CONTRACTID = sou.t_id
 ', 1, 
-    'Обогащение записи - добавление TGT_CONTRACTID из заголовка пакета ', 'Добавление TGT_CONTRACTID (1 часть, фиктивный получатель)', 'X');
+    'Обогащение записи - добавление TGT_CONTRACTID', 'Добавление TGT_CONTRACTID', 'X');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)

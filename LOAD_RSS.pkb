@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE BODY load_rss
+CREATE OR REPLACE PACKAGE BODY GEB_20210823_TST.load_rss
 is
     -- Сагиян С.Г. 11.2021
     -- Пакет загрузки данных в процессе репликации из таблиц DTX* в таблицы Rs-Bank 
@@ -30,7 +30,7 @@ is
     l_cou number;
     begin
         l_cou := nvl(p_count, sql%rowcount);
-        insert into dtx_querylog_dbt(T_STARTTIME, T_DURATION, T_TEXT, T_OBJECTYPE, T_SET, T_NUM, T_SESSION, T_SESSDETAIL, T_EXECROWS)
+        insert into dtx_querylog_dbt(T_STARTTIME, T_DURATION, T_TEXT, T_OBJECTTYPE, T_SET, T_NUM, T_SESSION, T_SESSDETAIL, T_EXECROWS)
         values (write_query_log_start, round((sysdate-write_query_log_start)*24*60*60), L_TEXT, L_OBJECTYPE, L_SET, L_NUM, g_SESSION_ID, g_SESS_DETAIL_ID, l_cou);
         commit;
         write_query_log_start := sysdate;
@@ -76,8 +76,7 @@ is
         dur_sec number;
         dur_interval interval day to second;
     begin
-        -- для производительности
-        -- лимит важности в спецификации пакета. Если переданное значение выше, сообщение не записывается.
+        -- для производительности        
 
         if upper(p_text) like 'ЗАВЕРШЕНА%ПРОЦЕДУРА%'
         then
@@ -457,7 +456,7 @@ is
         -- поскольку сам запрос не знает своего t_severity, как и остальных своих метаданных
         -- перенесено на момент заполнения таблицы ошибок
         -- merge into (select * from dtx_error_dbt where is_logged is null and t_sessid=G_SESSION_ID and T_DETAILID=g_SESS_DETAIL_ID) tgt
-        -- using dtx_query_dbt sou on (sou.t_screenid=tgt.t_queryid)
+        -- using dtx_query_dbt sou on (sou.t_queryid=tgt.t_queryid)
         -- when matched then update set tgt.T_SEVERITY = sou.T_SEVERITY;
         
         -- теперь внесем в лог ошибки и предупреждения
@@ -518,9 +517,9 @@ is
             execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_LIMIT ON DTXDEAL_TMP(T_LIMIT)';
             execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_CHRATE ON DTXDEAL_TMP(T_CHRATE)';
             execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_DIV ON DTXDEAL_TMP(T_DIV)';
-            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_ISBASKET ON DTXDEAL_TMP(T_ISBASKET)';
-        exception when others then
-            deb('Ошибка при создании индексов на снимке');
+            execute immediate 'CREATE BITMAP INDEX BMPI_DTXDEAL_ISBASKET ON DTXDEAL_TMP(TGT_ISBASKET)';
+--        exception when others then
+--            deb('Ошибка при создании индексов на снимке');
         end;
         
         deb('Считаем статистику на снимке');
@@ -628,7 +627,7 @@ is
                     WRITE_LOG_START;
                     l_text := replace( q_rec.t_text, '#', g_parallel_clause);
                     if q_rec.t_use_bind = 'X' then
-                        execute immediate l_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_screenid, q_rec.t_severity;
+                        execute immediate l_text using g_SESSION_ID, g_SESS_DETAIL_ID, q_rec.t_queryid, q_rec.t_severity;
                     else
                         execute immediate l_text;
                     end if;
@@ -638,10 +637,12 @@ is
                 exception
                 when others then
                     rollback;
-                    deb('Ошибка в запросе: вид объекта ' || p_objecttype || ', номер запроса #1 в сете #2, id запроса #3', q_rec.T_NUM, q_rec.T_SET, q_rec.T_SCREENID);
+                    deb('Ошибка в запросе: вид объекта ' || p_objecttype || ', номер запроса #1 в сете #2, id запроса #3', q_rec.T_NUM, q_rec.T_SET, q_rec.T_QUERYID);
                     WRITE_LOG_FINISH( '! Ошибка: '  || q_rec.T_NAME, q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
                     -- при выводе ошибочного запроса его параметры заменяются на нужные константы, чтобы можно было выполнить запрос в sql
-                    WRITE_LOG_FINISH( replace(replace(replace(replace(l_text,':1',g_SESSION_ID),':2', g_SESS_DETAIL_ID),':2', q_rec.t_screenid),':2', q_rec.t_severity), q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
+                    WRITE_LOG_FINISH( replace(replace(replace(replace(l_text,':1',g_SESSION_ID),':2', g_SESS_DETAIL_ID),':3', q_rec.t_queryid),':4', q_rec.t_severity), q_rec.T_OBJECTTYPE, q_rec.T_SET, q_rec.T_NUM);
+                    raise_application_error(-20000, 'Ошибка при выполнении динамического запроса queryid='|| q_rec.t_queryid || ' ( SET=' || q_rec.T_SET || ', NUM=' || q_rec.T_NUM || '. Репликация остановлена. Для получения информации: SELECT * FROM V_LOG.');                    
+                    
                     raise;
                 end; 
         end loop;
@@ -788,7 +789,7 @@ is
                 0 /*T_GROUNDID*/, 1 /*T_BUYGOAL*/, date'0001-01-01' /*T_COMMDATE*/, 0 /*T_PAYMENTSMETHOD*/, 0 /*T_FIXSUM*/, 
                 chr(1) /*T_NUMBER_PARTLY*/, date'0001-01-01' /*T_CHANGEDATE*/, 0 /*T_INSTANCE*/, 0 /*T_CHANGEKIND*/, TGT_PORTFOLIOID_2 /*T_PORTFOLIOID_2*/, 
                 NULL /*T_ISPARTYCLIENT*/, 0 /*T_PARTYCONTRID*/, 0 /*T_BRANCH*/, 0 /*T_AVOIRKIND*/, NULL /*T_OFBU*/, 
-                0 /*T_MARKETSCHEMEID*/, 0 /*T_DEPSETID*/, case when t_costchange=chr(88) then 2 else 0 end /*T_RETURNINCOMEKIND*/, 0 /*T_REQUESTID*/, NULL /*T_BLOCKED*/, 
+                0 /*T_MARKETSCHEMEID*/, 0 /*T_DEPSETID*/, case when t_costchange=chr(88) then 2 else 0 end /*T_RETURNINCOMEKIND*/, 0 /*T_REQUESTID*/, CHR(0) /*T_BLOCKED*/, 
                 nvl(tgt_country,chr(1)) /*T_COUNTRY*/, tgt_avoirissid /*T_PFI*/, NULL /*T_ISINSTANCY*/, 0 /*T_GENAGRID*/, 0 /*T_PARENTID*/, 
                 NULL /*T_ISNETTING*/, 0 /*T_VERSION*/, NULL /*T_CARRYWRT*/, NULL /*T_COUPONNDFL*/, NULL /*T_PROGNOS*/, 
                 NULL /*T_ISTRADEFINANCE*/, NULL /*T_SECTOR*/, NULL /*T_INCLUDE_DAY*/, NULL /*T_AUTOCLOSE*/, NULL /*T_OPENDATE*/, 
@@ -1431,7 +1432,7 @@ is
 	select 1, 'Авто'||TGT_COMMCODE /*T_CODE*/, 
             DECODE( T_TYPE, 1, 'Комиссия ТС', 2, 'Клиринговая комиссия', 3, 'Комиссия брокера', 4, 'Комиссия депозитария', 5, 'Прочие расходы', 6, 'Комиссия за ИТС') || ', по валюте ' || TGT_CURRENCYID  /*T_NAME*/,   
             0 /*T_CALCPERIODTYPE*/, 0 /*T_CALCPERIODNUM*/, date'0001-01-01' /*T_DATE*/, 1 /*T_PAYNDS*/, TGT_CURRENCYID, 1 /*T_RECEIVERID*/, 1 /*T_SERVICEKIND*/, 0 /*T_SERVICESUBKIND*/, -1 /*T_FIID_PAYSUM*/, date'0001-01-01' /*T_DATEBEGIN*/, date'0001-01-01' /*T_DATEEND*/, 0,0,0,0,0,1,1,1,chr(88),0,0,0
-        from DTXCOMISS_DBT where t_replstate=0 and TGT_COMMNUMBER is null and t_action in (1,2) group by TGT_COMMCODE, TGT_CURRENCYID, T_TYPE
+        from DTXCOMISS_TMP where t_replstate=0 and TGT_COMMNUMBER is null and t_action in (1,2) group by TGT_COMMCODE, TGT_CURRENCYID, T_TYPE;
         WRITE_LOG_FINISH('Вставка новых видов комиссий (dsfcomiss_dbt)', 100);
         commit;
 
@@ -1902,8 +1903,13 @@ is
             end case;
             return v_rez;
         end GetRateType;
+
   
-    
+    function GetDepartment return number DETERMINISTIC PARALLEL_ENABLE    
+    is
+    begin
+            return g_department;
+    end;
     
     -- запись в лог
     procedure add_log( p_code number, p_objtype number, p_id number, p_subnum number, p_text varchar2, p_date date)
@@ -1968,12 +1974,12 @@ is
             g_fictfi := c_DEFAULT_FICTFI;
         end;
         
-        select t_id into g_fictive_comiss_contract from dsfcontr_dbt where rownum=1;
+        --select t_id into g_fictive_comiss_contract from dsfcontr_dbt where rownum=1;
         
         deb('=== Завершен инициализирующий блок пакета ===');        
     end initialize;
  
-    procedure start_replication(p_startdate date default null, p_enddate date default null)
+    procedure start_replication(p_startdate date default null, p_enddate date default null, p_oper number default null)
     is
         l_enddate date;
         l_startdate date;
@@ -1982,6 +1988,7 @@ is
                 
         l_startdate := nvl( p_startdate, date'0001-01-01');
         l_enddate := nvl( p_enddate, date'4000-01-01'); 
+        g_oper := nvl( p_oper, g_oper );
     
         -- Назначение SESSION_ID
         insert into dtx_session_dbt(t_startdate, t_enddate, t_user, t_status)

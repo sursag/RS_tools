@@ -1,7 +1,15 @@
 -- Скрипт создает таблицы снимков
 -- Все таблицы постоянные, постфикс TMP сложился исторически, ничего не значит
 
-drop TABLE DTXDEAL_TMP;
+-- удаление старых таблиц
+BEGIN
+   FOR i in (select * from user_tables where table_name in ('DTXDEAL_TMP', 'DTXCOURSE_TMP', 'DTXDEMAND_TMP', 'DTXCOMISS_TMP'))
+   LOOP
+	--execute immediate 'DROP TABLE ' || i.table_name;
+        dbms_output.put_line('DROP TABLE ' || i.table_name);
+   END LOOP;
+END;
+
 
 CREATE TABLE DTXDEAL_TMP
 (
@@ -188,7 +196,6 @@ COMMENT ON COLUMN DTXDEAL_TMP.TGT_BS_DEALKIND IS 'Для движений по корзине: вид б
 
 
 
-
 CREATE TABLE DTXCOURSE_TMP
 (
   T_COURSEID          NUMBER(15)                NOT NULL,
@@ -262,8 +269,6 @@ COMMENT ON COLUMN DTXCOURSE_TMP.TGT_RATE IS 'Значение T_RATE, отмасштабированное
 
 
 
-drop TABLE DTXDEMAND_TMP;
-
 CREATE TABLE DTXDEMAND_TMP
 (
   T_DEMANDID       NUMBER(15)                   NOT NULL,
@@ -306,7 +311,7 @@ MONITORING;
 
 
 
-drop TABLE DTXCOMISS_TMP;
+
 
 CREATE TABLE DTXCOMISS_TMP
 (

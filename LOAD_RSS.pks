@@ -1,19 +1,21 @@
 CREATE OR REPLACE PACKAGE load_rss
 is
     -- параметры
-    g_debug_output boolean := true;         -- записывать отладочную информацию в буфер DBMS_OUTPUT
-    g_debug_table  boolean := false;        -- записывать отладочную информацию в таблицу
-    g_oper constant number := 1;            -- операционист, который будет прописываться во все таблицы
-    g_ourbank constant number := 13;        -- Код нашего банка. Проверить
-    g_department  constant number := 1;     -- Департамент по умолчанию. См. ddp_dep_dbt
-    g_is_initialized  boolean := false;
-    g_fictive_comiss_contract number := null;   -- фиктивный контракт комиссии ( dsfcontr_dbt.t_id )
+    g_debug_output boolean := true;              -- записывать отладочную информацию в буфер DBMS_OUTPUT
+    g_debug_table  boolean := false;             -- записывать отладочную информацию в таблицу
     
-    g_use_needdemand constant boolean := true;  -- Использовать NEEDDEMAND в сделках. Поскольку многие банки не используют его в принципе, нет смысла прогонять каждый раз запросы
+    g_ourbank         constant number := 13;     -- Код нашего банка. Проверить
+    g_department      constant number := 1;      -- Департамент по умолчанию. См. ddp_dep_dbt
+    g_use_needdemand  constant boolean := true;  -- Использовать NEEDDEMAND в сделках. Поскольку многие банки не используют его в принципе, нет смысла прогонять каждый раз запросы
     
-    g_parallel_clause varchar2(100) := 'parallel(16)';
+    g_is_initialized  boolean := false;          -- флаг успешно проеденной иницализации. Чтобы не проводить ее повторно. Инициализрующий код в исполняемой части тела пакета использовать не получится
+    g_fictive_comiss_contract number := null;    -- фиктивный контракт комиссии ( dsfcontr_dbt.t_id )
+    g_oper            number := 1;               -- операционист, который будет прописываться во все таблицы. Может подменяться при вызове start_replication
     
-    c_DEFAULT_FICTFI  number := 2192;  -- Фиктивный FIID для сделки с корзиной, по умолчанию.
+    
+    g_parallel_clause varchar2(100) := 'parallel(16)';  -- уровеь параллелизма, который применяется ко всем динамическим запросам.
+    
+    c_default_fictfi  number := 2192;  -- Фиктивный FIID для сделки с корзиной, по умолчанию.
         
     -- константы типов
     c_OBJTYPE_MONEY     constant number  := 10;
@@ -29,7 +31,7 @@ is
 
     -- специальные виды курсов
     c_RATE_TYPE_NKDONDATE       constant number := 15;        -- тип курса "НКД на дату"
-    c_RATE_TYPE_NOMINALONDATE   constant number := 100;  -- репликация номиналов ц/б на дату (реплицируются из таблицы курсов)
+    c_RATE_TYPE_NOMINALONDATE   constant number := 100;       -- репликация номиналов ц/б на дату (реплицируются из таблицы курсов)
 
     -- виды портфелей
     c_KINDPORT_TRADE    constant number := 1;
@@ -50,12 +52,13 @@ is
 
                                       
     -- Функции для вызова из SQL
-    function GetDealKind( p_kind number, p_avoirissid number, p_market number, p_isbasket char, p_isksu char)    return number PARALLEL_ENABLE ;
-    function GetIsQuoted(p_fi number, p_date date) return char DETERMINISTIC PARALLEL_ENABLE;
-    function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC PARALLEL_ENABLE;
-    function GetRateType( p_tp number ) return number DETERMINISTIC PARALLEL_ENABLE;    
-    function GetFictContract return number DETERMINISTIC PARALLEL_ENABLE;
-    function GetBasketFI return number DETERMINISTIC PARALLEL_ENABLE;  -- возвращает код фиктивной бумаги для сделки РЕПО с корзиной
+    function GetDealKind( p_kind number, p_avoirissid number, p_market number, p_isbasket char, p_isksu char)    return number PARALLEL_ENABLE ;  -- перекодирует тип сделки в домен целевой системы.
+    function GetIsQuoted(p_fi number, p_date date) return char DETERMINISTIC PARALLEL_ENABLE;          -- возвращает признак котируемости ц/б.
+    function GetCurrentNom(p_fi number, p_date date) return number DETERMINISTIC PARALLEL_ENABLE;      -- возвращает номинал ценной бумаги на дату
+    function GetRateType( p_tp number ) return number DETERMINISTIC PARALLEL_ENABLE;    -- перекодирует тип курса из домена буферной схемы в домен целевой системы
+    function GetFictContract return number DETERMINISTIC PARALLEL_ENABLE;  -- возвращает фиктивный контракт для комиссии. Устарело.
+    function GetBasketFI return number DETERMINISTIC PARALLEL_ENABLE;    -- возвращает код фиктивной бумаги для сделки РЕПО с корзиной
+    function GetDepartment return number DETERMINISTIC PARALLEL_ENABLE;  -- возвращает g_department - код департамента по умолчанию
 
     -- стартовые функции
     -- p_startdate определяет начальную дату репликации
@@ -69,7 +72,7 @@ is
     
     -- точка входа для макроса репликации
     -- если не заданы граничные даты, реплицирует за всё время
-    procedure start_replication(p_startdate date default null, p_enddate date default null);
+    procedure start_replication(p_startdate date default null, p_enddate date default null, p_oper number default null);
 
     g_my_SID  number; -- для сбора статистики по пореблению памяти и т.д.
     g_SESSION_ID number(10); -- номер сеанса для логов
