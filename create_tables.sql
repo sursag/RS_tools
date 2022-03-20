@@ -37,8 +37,6 @@ CREATE TABLE DTX_SESS_DETAIL_DBT
 );
 
 
-DROP TABLE DTX_QUERY_DBT;
-
 -- таблица запросов
 CREATE TABLE DTX_QUERY_DBT
 (
@@ -56,8 +54,6 @@ CREATE TABLE DTX_QUERY_DBT
 
 CREATE UNIQUE INDEX DTX_QUERY_DBT_ID1 ON DTX_QUERY_DBT (T_OBJECTTYPE,T_SET, T_NUM);
 
-
-DROP TABLE DTX_ERROR_DBT;
 
 -- таблица инстансов ошибок
 CREATE TABLE DTX_ERROR_DBT
@@ -78,12 +74,10 @@ LOGGING
 MONITORING;
 
 
-DROP TABLE dtx_errorkinds_dbt;
 
 CREATE TABLE dtx_errorkinds_dbt (t_code number(4) primary key, t_desc varchar2(1024 char));
 
 
-DROP TABLE DTX_QUERYLOG_DBT;
 
 CREATE TABLE DTX_QUERYLOG_DBT
 (
@@ -133,7 +127,6 @@ where t_sessid=(select max(t_sessid) from dtx_error_dbt) order by t_id;
 
 
 
-delete DTX_ERRORKINDS_DBT;
 
 Insert into DTX_ERRORKINDS_DBT
    (T_CODE, T_DESC)
