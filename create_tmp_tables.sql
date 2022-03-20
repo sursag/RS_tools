@@ -5,7 +5,7 @@
 BEGIN
    FOR i in (select * from user_tables where table_name in ('DTXDEAL_TMP', 'DTXCOURSE_TMP', 'DTXDEMAND_TMP', 'DTXCOMISS_TMP'))
    LOOP
-	--execute immediate 'DROP TABLE ' || i.table_name;
+	execute immediate 'DROP TABLE ' || i.table_name;
         dbms_output.put_line('DROP TABLE ' || i.table_name);
    END LOOP;
 END;
@@ -90,6 +90,7 @@ CREATE TABLE DTXDEAL_TMP
   T_PRIOR_PORTFOLIOID       CHAR(1 CHAR),
   T_PORTFOLIOID             CHAR(1 CHAR),
   T_NETTING_DEALID_DEST     NUMBER(15),
+  T_ISRELATIVEPRICE         CHAR(1),
   TGT_DEALID                NUMBER(15),
   TGT_PAYMCUR               NUMBER(15),
   TGT_CURRENCYID            NUMBER(15),

@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE BODY GEB_20210823_TST.load_rss
+CREATE OR REPLACE PACKAGE BODY load_rss
 is
     -- Сагиян С.Г. 11.2021
     -- Пакет загрузки данных в процессе репликации из таблиц DTX* в таблицы Rs-Bank 

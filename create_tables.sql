@@ -6,7 +6,7 @@
 BEGIN
    FOR i in (select * from user_tables where table_name in ('DTX_SESSION_DBT', 'DTX_SESS_DETAIL_DBT', 'DTX_QUERY_DBT', 'DTX_ERROR_DBT', 'DTX_ERRORKINDS_DBT', 'DTX_QUERYLOG_DBT'))
    LOOP
-	--execute immediate 'DROP TABLE ' || i.table_name;
+	execute immediate 'DROP TABLE ' || i.table_name;
         dbms_output.put_line('DROP TABLE ' || i.table_name);
    END LOOP;
 END;

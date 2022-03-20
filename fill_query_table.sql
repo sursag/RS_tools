@@ -633,7 +633,7 @@ Insert into DTX_QUERY_DBT
     T_DESC, T_NAME, T_IN_USE)
  Values
    (80, 3, 310, 'update /*+ # */ DTXDEAL_TMP set
-TGT_RELATIVEPRICE = case when TGT_ISBOND=chr(88) and tgt_bofficekind <> 117 then chr(88) else chr(0) end 
+TGT_RELATIVEPRICE = NVL( T_ISRELATIVEPRICE, CHR(0) ) 
 ', 1, 
     'Обогащение записи - добавление TGT_RELATIVEPRICE', 'Добавление TGT_RELATIVEPRICE', 'X');
 Insert into DTX_QUERY_DBT
