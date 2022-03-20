@@ -351,7 +351,7 @@ Insert into DTX_QUERY_DBT
  Values
    (80, 2, 80, 'insert /*+ # */ into dtx_error_dbt(t_sessid, t_detailid, t_queryid, t_severity, t_instancedate, t_objecttype, t_timestamp, t_objectid, T_ERRORCODE) select :1, :2, :3, :4, t_instancedate, 80, sysdate,  t_dealid, 557 from dtxdeal_tmp where T_COST = 0
 ', 1, 
-    'Не задан параметр T_COST - стоимость ценных бумаг без НКД', 'Проверка заполнения T_COST', 'X', 'X');
+    'Не задан параметр T_COST - стоимость ценных бумаг без НКД', 'Проверка заполнения T_COST', 'X', '');
 Insert into DTX_QUERY_DBT
    (T_OBJECTTYPE, T_SET, T_NUM, T_TEXT, T_SEVERITY, 
     T_DESC, T_NAME, T_USE_BIND, T_IN_USE)

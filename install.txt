@@ -6,4 +6,3 @@ Fill_query_table.sql
 LOAD_RSS.pks
 LOAD_RSS.pkb
 
-Остальные скрипты в папке с префиксами '_' служат для описания и отладки
